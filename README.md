@@ -79,7 +79,7 @@ Communication between the two processes uses newline-delimited JSON (NDJSON) ove
 
 ## Prerequisites
 
-- **Rust 1.85+** -- install or update via [rustup](https://rustup.rs/): `rustup update stable`
+- **Rust 1.93+** -- install or update via [rustup](https://rustup.rs/): `rustup update stable`
 - **Telegram bot token** -- create a bot by talking to [@BotFather](https://t.me/BotFather) on Telegram. Save the token it gives you.
 - **Your Telegram chat ID** -- get it by messaging [@userinfobot](https://t.me/userinfobot) on Telegram. It returns a numeric ID like `123456789`.
 
@@ -379,4 +379,4 @@ src/
 
 ## License
 
-TODO
+[MIT](LICENSE)

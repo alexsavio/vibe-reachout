@@ -1,0 +1,12 @@
+# Cargo configuration — enforce strict clippy lints for all targets
+[target.'cfg(all())']
+rustflags = [
+    "-Wclippy::all",
+    "-Wclippy::pedantic",
+    "-Wclippy::nursery",
+    "-Aclippy::module_name_repetitions",
+    "-Aclippy::must_use_candidate",
+    "-Aclippy::missing_errors_doc",
+    "-Aclippy::missing_panics_doc",
+    "-Aclippy::option_if_let_else",
+]

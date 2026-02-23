@@ -65,10 +65,8 @@ pub async fn run_hook(config: &Config) -> anyhow::Result<()> {
         crate::ipc::client::send_request(&socket_path, &ipc_request, ipc_timeout).await?;
 
     // Map IpcResponse to HookOutput
-    let Some(output) = map_decision_to_output(&response) else {
-        // Timeout — exit code 1, fall back to terminal
-        std::process::exit(1);
-    };
+    let output = map_decision_to_output(&response)
+        .ok_or_else(|| anyhow::anyhow!("Request timed out — falling back to terminal"))?;
 
     // Write JSON to stdout
     let json = serde_json::to_string(&output)?;

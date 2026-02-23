@@ -12,13 +12,14 @@ and this project adheres to [Calendar Versioning](https://calver.org/) (YYYY.MM.
 - Initial commit from Specify template
 - Implement Telegram permission hook for Claude Code (#1)
 
-* Implement vibe-reachout: Telegram permission hook for Claude Code
+- Implement vibe-reachout: Telegram permission hook for Claude Code
 
 Rust CLI that intercepts Claude Code PermissionRequest events and forwards
 them to Telegram, letting the user approve/deny/reply from their phone
 instead of staying at the terminal.
 
 Includes full spec, design artifacts, and implementation:
+
 - Hook mode (stdin JSON -> Unix socket -> stdout JSON)
 - Bot mode (Unix socket server + Telegram long polling)
 - Install command (registers hook in ~/.claude/settings.json)
@@ -28,7 +29,7 @@ Includes full spec, design artifacts, and implementation:
 - Graceful fallback (bot down or timeout -> terminal prompt)
 - 4MB release binary with rustls TLS backend
 
-* Add test suite: 44 tests covering models, formatter, keyboard, config, install, and IPC
+- Add test suite: 44 tests covering models, formatter, keyboard, config, install, and IPC
 
 - Add tempfile dev-dependency for filesystem-based tests
 - Extract Config::load_from_path and install_hook for testability
@@ -40,7 +41,7 @@ Includes full spec, design artifacts, and implementation:
 - Unit tests for install (idempotency, preserving existing hooks)
 - Integration tests for IPC client-server roundtrip over Unix socket
 
-* Upgrade deps (teloxide 0.17, toml 0.9, dirs 6) and bump MSRV to 1.93
+- Upgrade deps (teloxide 0.17, toml 0.9, dirs 6) and bump MSRV to 1.93
 
 - teloxide 0.13 → 0.17: fix answer_callback_query to take owned CallbackQueryId
 - toml 0.8 → 0.9.8, dirs 5 → 6.0.0
@@ -48,7 +49,7 @@ Includes full spec, design artifacts, and implementation:
 - Fix collapsible-if clippy warning in config.rs
 - Resolves cargo audit RUSTSEC-2026-0009 (time crate DoS)
 
-* chore: add MIT license, changelog, and switch to CalVer 2026.2.0
+- chore: add MIT license, changelog, and switch to CalVer 2026.2.0
 
 - Add MIT LICENSE file
 - Update README with Rust 1.93+ requirement and license link

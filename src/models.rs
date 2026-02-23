@@ -6,17 +6,36 @@ use uuid::Uuid;
 
 /// Claude Code's JSON sent to hook via stdin.
 #[derive(Debug, Deserialize)]
-#[allow(dead_code)]
 pub struct HookInput {
     pub session_id: String,
+    /// Deserialized for protocol completeness; not read after parsing.
+    #[allow(dead_code)]
     pub transcript_path: String,
     pub cwd: String,
+    /// Deserialized for protocol completeness; not read after parsing.
+    #[allow(dead_code)]
     pub permission_mode: String,
+    /// Deserialized for protocol completeness; not read after parsing.
+    #[allow(dead_code)]
     pub hook_event_name: String,
     pub tool_name: String,
     pub tool_input: serde_json::Value,
     #[serde(default)]
     pub permission_suggestions: Vec<serde_json::Value>,
+}
+
+/// The behavior a hook decision can take.
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub enum HookBehavior {
+    Allow,
+    Deny,
+}
+
+/// Known hook event names in the Claude Code protocol.
+#[derive(Debug, Serialize)]
+pub enum HookEventName {
+    PermissionRequest,
 }
 
 /// JSON written to stdout for Claude Code.
@@ -29,14 +48,14 @@ pub struct HookOutput {
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct HookSpecificOutput {
-    pub hook_event_name: String,
+    pub hook_event_name: HookEventName,
     pub decision: HookDecision,
 }
 
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct HookDecision {
-    pub behavior: String,
+    pub behavior: HookBehavior,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub message: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -44,12 +63,13 @@ pub struct HookDecision {
 }
 
 impl HookOutput {
-    pub fn allow() -> Self {
+    #[must_use]
+    pub const fn allow() -> Self {
         Self {
             hook_specific_output: HookSpecificOutput {
-                hook_event_name: "PermissionRequest".to_string(),
+                hook_event_name: HookEventName::PermissionRequest,
                 decision: HookDecision {
-                    behavior: "allow".to_string(),
+                    behavior: HookBehavior::Allow,
                     message: None,
                     updated_permissions: None,
                 },
@@ -57,12 +77,13 @@ impl HookOutput {
         }
     }
 
-    pub fn deny(message: String) -> Self {
+    #[must_use]
+    pub const fn deny(message: String) -> Self {
         Self {
             hook_specific_output: HookSpecificOutput {
-                hook_event_name: "PermissionRequest".to_string(),
+                hook_event_name: HookEventName::PermissionRequest,
                 decision: HookDecision {
-                    behavior: "deny".to_string(),
+                    behavior: HookBehavior::Deny,
                     message: Some(message),
                     updated_permissions: None,
                 },
@@ -70,12 +91,13 @@ impl HookOutput {
         }
     }
 
-    pub fn allow_always(permissions: Vec<serde_json::Value>) -> Self {
+    #[must_use]
+    pub const fn allow_always(permissions: Vec<serde_json::Value>) -> Self {
         Self {
             hook_specific_output: HookSpecificOutput {
-                hook_event_name: "PermissionRequest".to_string(),
+                hook_event_name: HookEventName::PermissionRequest,
                 decision: HookDecision {
-                    behavior: "allow".to_string(),
+                    behavior: HookBehavior::Allow,
                     message: None,
                     updated_permissions: Some(permissions),
                 },
@@ -109,6 +131,63 @@ pub struct IpcResponse {
     pub always_allow_suggestion: Option<serde_json::Value>,
 }
 
+impl IpcResponse {
+    #[must_use]
+    pub const fn timeout(request_id: Uuid) -> Self {
+        Self {
+            request_id,
+            decision: Decision::Timeout,
+            message: None,
+            user_message: None,
+            always_allow_suggestion: None,
+        }
+    }
+
+    #[must_use]
+    pub const fn allow(request_id: Uuid) -> Self {
+        Self {
+            request_id,
+            decision: Decision::Allow,
+            message: None,
+            user_message: None,
+            always_allow_suggestion: None,
+        }
+    }
+
+    #[must_use]
+    pub const fn deny(request_id: Uuid, message: String) -> Self {
+        Self {
+            request_id,
+            decision: Decision::Deny,
+            message: Some(message),
+            user_message: None,
+            always_allow_suggestion: None,
+        }
+    }
+
+    #[must_use]
+    pub const fn always_allow(request_id: Uuid, suggestion: Option<serde_json::Value>) -> Self {
+        Self {
+            request_id,
+            decision: Decision::AlwaysAllow,
+            message: None,
+            user_message: None,
+            always_allow_suggestion: suggestion,
+        }
+    }
+
+    #[must_use]
+    pub const fn reply(request_id: Uuid, user_message: String) -> Self {
+        Self {
+            request_id,
+            decision: Decision::Reply,
+            message: None,
+            user_message: Some(user_message),
+            always_allow_suggestion: None,
+        }
+    }
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub enum Decision {
     Allow,
@@ -126,13 +205,16 @@ pub struct SentMessage {
 }
 
 /// In-memory state for a request awaiting Telegram response.
-#[allow(dead_code)]
 pub struct PendingRequest {
+    /// Redundant with the `DashMap` key; kept for logging convenience.
+    #[allow(dead_code)]
     pub request_id: Uuid,
     pub sender: oneshot::Sender<IpcResponse>,
     pub sent_messages: Vec<SentMessage>,
     pub original_text: String,
     pub permission_suggestions: Vec<serde_json::Value>,
+    /// Stored for future timeout diagnostics.
+    #[allow(dead_code)]
     pub created_at: Instant,
 }
 
@@ -267,5 +349,37 @@ mod tests {
         assert_eq!(back.request_id, id);
         assert_eq!(back.decision, Decision::Allow);
         assert_eq!(back.user_message.as_deref(), Some("approved by user"));
+    }
+
+    #[test]
+    fn ipc_response_timeout_constructor() {
+        let id = Uuid::new_v4();
+        let resp = IpcResponse::timeout(id);
+        assert_eq!(resp.request_id, id);
+        assert_eq!(resp.decision, Decision::Timeout);
+        assert!(resp.message.is_none());
+        assert!(resp.user_message.is_none());
+        assert!(resp.always_allow_suggestion.is_none());
+    }
+
+    #[test]
+    fn ipc_response_constructors_produce_correct_decisions() {
+        let id = Uuid::new_v4();
+
+        let allow = IpcResponse::allow(id);
+        assert_eq!(allow.decision, Decision::Allow);
+
+        let deny = IpcResponse::deny(id, "nope".to_string());
+        assert_eq!(deny.decision, Decision::Deny);
+        assert_eq!(deny.message.as_deref(), Some("nope"));
+
+        let suggestion = serde_json::json!({"tool": "Bash"});
+        let always = IpcResponse::always_allow(id, Some(suggestion.clone()));
+        assert_eq!(always.decision, Decision::AlwaysAllow);
+        assert_eq!(always.always_allow_suggestion, Some(suggestion));
+
+        let reply = IpcResponse::reply(id, "use pytest".to_string());
+        assert_eq!(reply.decision, Decision::Reply);
+        assert_eq!(reply.user_message.as_deref(), Some("use pytest"));
     }
 }

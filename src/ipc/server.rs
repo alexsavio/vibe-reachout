@@ -6,7 +6,7 @@ use std::sync::Arc;
 use teloxide::prelude::*;
 use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
 use tokio::net::UnixListener;
-use tokio::sync::oneshot;
+use tokio::sync::{Semaphore, oneshot};
 use tokio::time::Instant;
 use tokio_util::sync::CancellationToken;
 use uuid::Uuid;
@@ -52,6 +52,7 @@ pub async fn run_server(
     pending_map: PendingMap,
 ) -> Result<(), BotError> {
     let listener = UnixListener::bind(socket_path).map_err(BotError::SocketBind)?;
+    let semaphore = Arc::new(Semaphore::new(50));
     tracing::info!("Socket server listening on {}", socket_path.display());
 
     loop {
@@ -63,11 +64,16 @@ pub async fn run_server(
             accept_result = listener.accept() => {
                 match accept_result {
                     Ok((stream, _addr)) => {
+                        let Ok(permit) = semaphore.clone().try_acquire_owned() else {
+                            tracing::warn!("Max concurrent connections reached, dropping connection");
+                            continue;
+                        };
                         let bot = bot.clone();
                         let config = config.clone();
                         let pending_map = pending_map.clone();
                         let cancel = cancel_token.clone();
                         tokio::spawn(async move {
+                            let _permit = permit;
                             if let Err(e) = handle_connection(stream, bot, config, pending_map, cancel).await {
                                 tracing::error!("Connection handler error: {e}");
                             }
@@ -140,13 +146,7 @@ async fn handle_connection(
     let response = tokio::select! {
         () = cancel_token.cancelled() => {
             pending_map.remove(&request_id);
-            IpcResponse {
-                request_id,
-                decision: crate::models::Decision::Timeout,
-                message: None,
-                user_message: None,
-                always_allow_suggestion: None,
-            }
+            IpcResponse::timeout(request_id)
         }
         result = tokio::time::timeout(timeout_duration, rx) => {
             match result {
@@ -154,13 +154,7 @@ async fn handle_connection(
                 Ok(Err(_)) => {
                     // Sender dropped (shouldn't happen normally)
                     pending_map.remove(&request_id);
-                    IpcResponse {
-                        request_id,
-                        decision: crate::models::Decision::Timeout,
-                        message: None,
-                        user_message: None,
-                        always_allow_suggestion: None,
-                    }
+                    IpcResponse::timeout(request_id)
                 }
                 Err(_) => {
                     // Timeout
@@ -168,13 +162,7 @@ async fn handle_connection(
                     if let Some((_, pending)) = pending_map.remove(&request_id) {
                         crate::bot::edit_messages_status(&bot, &pending.sent_messages, &pending.original_text, "\u{23f1}\u{fe0f} Timed out").await;
                     }
-                    IpcResponse {
-                        request_id,
-                        decision: crate::models::Decision::Timeout,
-                        message: None,
-                        user_message: None,
-                        always_allow_suggestion: None,
-                    }
+                    IpcResponse::timeout(request_id)
                 }
             }
         }

@@ -1,3 +1,8 @@
+//! Library facade for integration tests.
+//!
+//! The binary crate (`main.rs`) owns the canonical module tree.
+//! This crate re-exports only the subset needed by `tests/` integration tests.
+
 pub mod error;
 pub mod models;
 

@@ -19,12 +19,13 @@ pub fn install_hook(settings_path: &Path) -> anyhow::Result<()> {
         serde_json::json!({})
     };
 
-    // Ensure hooks object exists
-    if settings.get("hooks").is_none() {
-        settings["hooks"] = serde_json::json!({});
-    }
-
-    let hooks = settings["hooks"].as_object_mut().unwrap();
+    let hooks = settings
+        .as_object_mut()
+        .expect("settings must be a JSON object")
+        .entry("hooks")
+        .or_insert_with(|| serde_json::json!({}))
+        .as_object_mut()
+        .expect("hooks must be a JSON object");
 
     // The hook entry we want to install
     let hook_entry = serde_json::json!({

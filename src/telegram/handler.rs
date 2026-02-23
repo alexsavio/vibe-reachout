@@ -1,6 +1,7 @@
 use crate::config::Config;
 use crate::ipc::server::PendingMap;
-use crate::models::{Decision, IpcResponse};
+use crate::models::IpcResponse;
+use crate::telegram::callback_data::{CallbackAction, CallbackData};
 use dashmap::DashMap;
 use std::sync::Arc;
 use teloxide::prelude::*;
@@ -16,12 +17,17 @@ pub async fn handle_callback(
     pending_map: PendingMap,
     reply_state: ReplyState,
 ) -> Result<(), teloxide::RequestError> {
-    let chat_id = query.message.as_ref().map_or(ChatId(0), |m| m.chat().id);
+    let Some(msg) = query.message.as_ref() else {
+        tracing::warn!("Callback query with no associated message");
+        return Ok(());
+    };
+    let chat_id = msg.chat().id;
+    let query_id = query.id;
 
     // Authorization check
     if !config.allowed_chat_ids.contains(&chat_id.0) {
         tracing::warn!(chat_id = chat_id.0, "Unauthorized callback attempt");
-        bot.answer_callback_query(query.id.clone())
+        bot.answer_callback_query(query_id.clone())
             .text("Unauthorized")
             .show_alert(true)
             .await?;
@@ -34,19 +40,16 @@ pub async fn handle_callback(
     };
 
     // Parse callback data: "{uuid}:{action}"
-    let parts: Vec<&str> = data.splitn(2, ':').collect();
-    if parts.len() != 2 {
-        return Ok(());
-    }
-
-    let Ok(request_id) = Uuid::parse_str(parts[0]) else {
+    let Some(callback) = CallbackData::parse(&data) else {
+        tracing::warn!(data = %data, "Failed to parse callback data");
         return Ok(());
     };
-    let action = parts[1];
+
+    let request_id = callback.request_id;
 
     // Handle reply action specially — don't resolve yet
-    if action == "reply" {
-        bot.answer_callback_query(query.id.clone()).await?;
+    if callback.action == CallbackAction::Reply {
+        bot.answer_callback_query(query_id.clone()).await?;
 
         if pending_map.contains_key(&request_id) {
             // Send ForceReply prompt
@@ -67,50 +70,29 @@ pub async fn handle_callback(
     // For allow/deny/always — resolve the pending request
     let Some((_, pending)) = pending_map.remove(&request_id) else {
         // Already handled
-        bot.answer_callback_query(query.id.clone())
+        bot.answer_callback_query(query_id.clone())
             .text("This request has already been handled")
             .show_alert(true)
             .await?;
         return Ok(());
     };
 
-    bot.answer_callback_query(query.id.clone()).await?;
+    bot.answer_callback_query(query_id.clone()).await?;
 
-    let (response, status_text) = match action {
-        "allow" => (
-            IpcResponse {
-                request_id,
-                decision: Decision::Allow,
-                message: None,
-                user_message: None,
-                always_allow_suggestion: None,
-            },
-            "\u{2705} Approved",
-        ),
-        "deny" => (
-            IpcResponse {
-                request_id,
-                decision: Decision::Deny,
-                message: Some("Denied by user via Telegram".to_string()),
-                user_message: None,
-                always_allow_suggestion: None,
-            },
+    let (response, status_text) = match callback.action {
+        CallbackAction::Allow => (IpcResponse::allow(request_id), "\u{2705} Approved"),
+        CallbackAction::Deny => (
+            IpcResponse::deny(request_id, "Denied by user via Telegram".to_string()),
             "\u{274c} Denied",
         ),
-        "always" => {
+        CallbackAction::Always => {
             let suggestion = pending.permission_suggestions.first().cloned();
             (
-                IpcResponse {
-                    request_id,
-                    decision: Decision::AlwaysAllow,
-                    message: None,
-                    user_message: None,
-                    always_allow_suggestion: suggestion,
-                },
+                IpcResponse::always_allow(request_id, suggestion),
                 "\u{1f513} Always Allowed",
             )
         }
-        _ => return Ok(()),
+        CallbackAction::Reply => unreachable!("Reply handled above"),
     };
 
     // Edit ALL sent messages to show status
@@ -167,13 +149,7 @@ pub async fn handle_message(
         return Ok(());
     };
 
-    let response = IpcResponse {
-        request_id,
-        decision: Decision::Reply,
-        message: None,
-        user_message: Some(text),
-        always_allow_suggestion: None,
-    };
+    let response = IpcResponse::reply(request_id, text);
 
     // Edit ALL sent messages
     crate::bot::edit_messages_status(

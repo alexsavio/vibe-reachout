@@ -67,7 +67,6 @@ pub async fn run_bot(config: Config) -> anyhow::Result<()> {
     let dispatcher = async {
         Box::pin(
             Dispatcher::builder(bot.clone(), handler)
-                .enable_ctrlc_handler()
                 .build()
                 .dispatch_with_listener(
                     teloxide::update_listeners::polling_default(bot.clone()).await,
@@ -129,13 +128,9 @@ fn drain_pending_requests(pending_map: &PendingMap) {
     for key in keys {
         if let Some((_, pending)) = pending_map.remove(&key) {
             tracing::info!(request_id = %key, "Resolving pending request as timeout on shutdown");
-            let _ = pending.sender.send(crate::models::IpcResponse {
-                request_id: key,
-                decision: crate::models::Decision::Timeout,
-                message: None,
-                user_message: None,
-                always_allow_suggestion: None,
-            });
+            let _ = pending
+                .sender
+                .send(crate::models::IpcResponse::timeout(key));
         }
     }
 }

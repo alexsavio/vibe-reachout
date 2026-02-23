@@ -1,116 +1,178 @@
-# Tasks: Telegram Permission Hook for Claude Code
+# Tasks: Telegram Permission Hook
 
-**Input**: Design documents from `specs/001-telegram-permission-hook/`
-**Prerequisites**: plan.md (required), spec.md (required), contracts/hook-io.md, contracts/ipc.md, clarifications.md
+**Input**: Design documents from `/specs/001-telegram-permission-hook/`
+**Prerequisites**: plan.md (required), spec.md (required), research.md, data-model.md, contracts/
+
+**Tests**: Not explicitly requested in spec. Integration tests included in Polish phase for validation.
+
+**Organization**: Tasks grouped by user story. US1 & US2 combined (both P1, share 95% infrastructure).
 
 ## Format: `[ID] [P?] [Story] Description`
 
 - **[P]**: Can run in parallel (different files, no dependencies)
-- **[Story]**: Which user story this task belongs to (e.g., US1, US3)
+- **[Story]**: Which user story this task belongs to
+- Include exact file paths in descriptions
 
 ---
 
-## Phase 1: Setup & Core Infrastructure
+## Phase 1: Setup (Shared Infrastructure)
 
-**Purpose**: Project scaffolding, config, CLI, and shared types. No user-facing functionality yet.
+**Purpose**: Initialize Rust project with all dependencies and directory structure
 
-- [ ] T001 Create project scaffolding: Cargo.toml with all dependencies (teloxide, tokio, clap, serde, serde_json, toml, uuid, dirs, tracing, tracing-subscriber, dashmap), justfile (check, lint, format, test, build), clippy.toml, rustfmt.toml. Follow Cor CLI conventions.
-- [ ] T002 [P] CLI argument parsing in `src/main.rs`: clap with 4 subcommands — (default) hook mode, `bot`, `install`, `init`. Each dispatches to its module.
-- [ ] T003 [P] Config types and parsing in `src/config.rs`: `Config` struct (telegram_bot_token, allowed_chat_ids, timeout_seconds, socket_path). Parse from `~/.config/vibe-reachout/config.toml`. Platform-specific default socket path (macOS: `/tmp/vibe-reachout-{uid}.sock`, Linux: `$XDG_RUNTIME_DIR/vibe-reachout.sock`).
-- [ ] T004 [P] Shared types — Claude Code hook I/O in `src/types/hook_io.rs`: `HookInput` (session_id, transcript_path, cwd, permission_mode, hook_event_name, tool_name, tool_input as Value, permission_suggestions), `HookOutput` (hookSpecificOutput with hookEventName + decision), `PermissionSuggestion` struct.
-- [ ] T005 [P] Shared types — IPC protocol in `src/types/ipc.rs`: `IpcRequest` (request_id UUID, tool_name, tool_input Value, cwd, session_id, permission_suggestions), `IpcResponse` (request_id, decision enum allow/deny/timeout, message Option, always_allow_suggestion Option). Note: `session_id` is required for multi-session disambiguation (FR-008).
-- [ ] T006 `init` subcommand in `src/init.rs`: Interactive mode — prompt for bot token and chat ID. Non-interactive mode — `--token` and `--chat-id` flags. Writes config.toml. Errors if config already exists (use `--force` to overwrite). Depends on T003 (config module for struct + default paths).
-- [ ] T007 [P] Unit tests for config parsing in `tests/config_test.rs`: valid config, missing fields, invalid chat IDs, default socket path per platform.
-- [ ] T008 [P] Unit tests for hook I/O serialization in `tests/hook_io_test.rs`: deserialize sample Claude Code JSON for Bash, Write, Edit, Read, Glob, Grep, WebFetch, WebSearch, Task tools. Serialize HookOutput for allow, deny, always-allow decisions.
-- [ ] T009 [P] Unit tests for IPC serialization in `tests/ipc_test.rs`: round-trip IpcRequest/IpcResponse through serde_json.
-
-- [ ] T041 [P] Configure tracing-subscriber in `src/main.rs`: hook mode → stderr-only writer (stdout reserved for JSON), bot mode → stdout writer. Support `RUST_LOG` env var for level control. Ensure hook mode NEVER writes non-JSON to stdout.
-
-**Checkpoint**: `just check` passes. All types compile and serialize correctly. `vibe-reachout --help` shows subcommands.
+- [x] T001 Initialize Cargo project: run `cargo init --name vibe-reachout`, set edition = "2024", rust-version = "1.85" in Cargo.toml
+- [x] T002 Add all dependencies to Cargo.toml per specs/001-telegram-permission-hook/research.md section R6 (tokio, teloxide, clap, serde, serde_json, toml, dashmap, uuid, anyhow, thiserror, tracing, tracing-subscriber, dirs, libc, tokio-util)
+- [x] T003 Configure release profile in Cargo.toml: strip = true, lto = true, codegen-units = 1, opt-level = "z"
+- [x] T004 Create source directory structure: src/telegram/ (mod.rs, handler.rs, keyboard.rs, formatter.rs), src/ipc/ (mod.rs, server.rs, client.rs), and stub files for src/config.rs, src/models.rs, src/hook.rs, src/bot.rs, src/install.rs, src/error.rs
 
 ---
 
-## Phase 2: User Story 3 — Start the Bot (Priority: P1) 🎯
+## Phase 2: Foundational (Blocking Prerequisites)
 
-**Goal**: Bot process that listens on Unix socket and connects to Telegram.
+**Purpose**: Shared types, config, error handling, CLI parsing, and logging that ALL stories depend on
 
-**Independent Test**: Run `vibe-reachout bot`, verify socket is created and Telegram connection succeeds.
+**CRITICAL**: No user story work can begin until this phase is complete
 
-### Tests for US3
+- [x] T005 Define error types using thiserror in src/error.rs: HookError (SocketNotFound, ConnectionRefused, InvalidResponse, Timeout), BotError (AlreadyRunning, StaleSocket, TelegramApi, ConfigInvalid), InstallError (SettingsNotFound, ParseError, WriteError)
+- [x] T006 [P] Define all shared types in src/models.rs per specs/001-telegram-permission-hook/data-model.md: Config (with serde Deserialize, validation methods), HookInput (with serde Deserialize for all fields including tool_input as serde_json::Value), HookOutput (with serde Serialize, nested hookSpecificOutput.decision structure), IpcRequest (with Serialize + Deserialize, request_id as Uuid), IpcResponse (with Serialize + Deserialize, Decision enum: Allow/Deny/AlwaysAllow/Reply/Timeout), SentMessage struct (chat_id, message_id), PendingRequest struct (request_id, oneshot::Sender, sent_messages: Vec<SentMessage>, original_text, permission_suggestions, created_at)
+- [x] T007 [P] Implement config loading in src/config.rs: load from ~/.config/vibe-reachout/config.toml using dirs crate + toml crate, validate (non-empty token, at least one chat_id, timeout > 0 and <= 3600), default_socket_path() using XDG_RUNTIME_DIR or /tmp/vibe-reachout-{uid}.sock fallback per specs/001-telegram-permission-hook/contracts/ipc.md
+- [x] T008 Implement CLI parsing with clap derive in src/main.rs: Cli struct with Optional Commands enum (Bot, Install), None = hook mode. Wire subcommand dispatch stubs that load config and call placeholder functions
+- [x] T009 [P] Set up tracing infrastructure in src/main.rs: init_tracing(is_hook_mode: bool) function, stderr writer, EnvFilter from RUST_LOG with default "warn" for hook mode and "info" for bot mode per spec Constraints section
 
-- [ ] T010 [P] [US3] Unit test for stale socket detection in `tests/bot_server_test.rs`: mock socket file exists but no listener → detected as stale → removed.
-- [ ] T011 [P] [US3] Unit test for message formatting in `tests/formatter_test.rs`: test Bash (command + description), Write (file_path + line count), Edit (file + truncated diff), Read, Glob, Grep, WebFetch (URL), WebSearch (query), Task, MCP tool formatting.
-- [ ] T012 [P] [US3] Unit test for callback parsing and chat ID validation in `tests/bot_telegram_test.rs`: authorized callback accepted, unauthorized rejected, malformed callback data handled. Verify callback data for all action types (allow, deny, always) stays under Telegram's 64-byte limit.
-
-### Implementation for US3
-
-- [ ] T013 [US3] Unix socket server in `src/bot/server.rs`: tokio UnixListener at configured path. Accept concurrent connections. Each connection: read IpcRequest, register in pending map, wait for resolution via oneshot channel, send IpcResponse. Stale socket detection on startup (try connect → if fails, delete and rebind; if succeeds, error "bot already running").
-- [ ] T014 [US3] Request correlation in `src/bot/pending.rs`: `DashMap<Uuid, oneshot::Sender<IpcResponse>>`. Methods: `register(request_id) → oneshot::Receiver`, `resolve(request_id, response)`, `timeout(request_id)`, `remove(request_id)`.
-- [ ] T015 [US3] Telegram bot setup in `src/bot/telegram.rs`: Initialize teloxide bot with token from config. Long polling dispatcher. Callback query handler that extracts `request_id:action` from callback data, validates chat ID, resolves pending request. Configure teloxide retry policy for rate limits and network errors.
-- [ ] T016 [US3] Tool-specific message formatting in `src/bot/formatter.rs`: Format IpcRequest into Telegram message text + inline keyboard. Tool-specific detail extraction per plan (Bash: command, Write: file + size, Edit: file + truncated diff, WebFetch: URL, WebSearch: query, Task: agent + description, MCP: tool_name + truncated JSON, etc.). Include cwd and session_id (first 8 chars). Hide "Always Allow" button when permission_suggestions is empty.
-- [ ] T017 [US3] Per-request timeout in `src/bot/pending.rs`: Spawn tokio::time::sleep task per request. On timeout: resolve with `decision: "timeout"`, edit Telegram message to "⏱️ Timed out — respond in terminal". Depends on T015 (needs bot instance + stored message_id for editing).
-- [ ] T018 [US3] Bot entry point in `src/bot/mod.rs`: Wire together socket server + Telegram bot + pending map. Graceful shutdown on SIGINT/SIGTERM (send timeout to all pending, remove socket file).
-- [ ] T019 [US3] Integration test in `tests/integration/bot_test.rs`: Start bot, connect via Unix socket, send IpcRequest, verify Telegram message is sent (mock Telegram API or use teloxide test utilities).
-
-**Checkpoint**: `vibe-reachout bot` starts, binds socket, connects to Telegram. Can receive IPC connections and send messages.
+**Checkpoint**: Foundation ready — `cargo build` succeeds, `vibe-reachout --help` shows subcommands
 
 ---
 
-## Phase 3: User Stories 1 & 2 — Approve and Deny (Priority: P1) 🎯 MVP
+## Phase 3: US3 — Start the Bot (Priority: P1)
 
-**Goal**: Hook mode that bridges Claude Code stdin/stdout to the bot via Unix socket.
+**Goal**: `vibe-reachout bot` starts Telegram polling and binds Unix socket, ready to accept hook connections
 
-**Independent Test**: Pipe sample HookInput JSON into `vibe-reachout`, tap Allow/Deny on Telegram, verify correct HookOutput JSON on stdout.
+**Independent Test**: Run `vibe-reachout bot`, verify it connects to Telegram API and listens on Unix socket
 
-### Tests for US1 & US2
+- [x] T010 [US3] Implement Unix socket server startup in src/ipc/server.rs: async fn run_server(socket_path, cancel_token) that calls UnixListener::bind(), loops on accept() with tokio::select! against cancellation, spawns tokio::spawn per connection with placeholder handler
+- [x] T011 [US3] Implement stale socket detection in src/ipc/server.rs: fn detect_and_clean_stale_socket(socket_path) using synchronous std::os::unix::net::UnixStream::connect — if ConnectionRefused remove file and return Ok, if connection succeeds return BotError::AlreadyRunning
+- [x] T012 [US3] Implement Telegram bot initialization in src/bot.rs: create Bot::new(token), build dptree dispatcher with empty callback_query and message handler branches, set up long polling via Dispatcher::builder().dispatch()
+- [x] T013 [US3] Implement graceful shutdown in src/bot.rs: CancellationToken shared between socket server and Telegram dispatcher, tokio::signal handler for SIGTERM + SIGINT that cancels the token, cleanup socket file on exit, resolve all pending requests with Timeout
+- [x] T014 [US3] Wire bot subcommand in src/main.rs: load config, call detect_and_clean_stale_socket, launch socket server + Telegram dispatcher concurrently with tokio::select!, handle startup errors with clear messages
 
-- [ ] T020 [P] [US1] Unit test for stdin→IpcRequest conversion in `tests/hook_test.rs`: various tool_name/tool_input combinations correctly mapped to IpcRequest fields.
-- [ ] T021 [P] [US2] Unit test for IpcResponse→HookOutput conversion in `tests/hook_test.rs`: allow → `behavior: "allow"`, deny → `behavior: "deny"` with message, timeout → no output (exit 1).
-
-### Implementation for US1 & US2
-
-- [ ] T022 [US1] Stdin JSON reader in `src/hook.rs`: Read all stdin, deserialize as HookInput. On malformed JSON: log to stderr, exit 1.
-- [ ] T023 [US1] Unix socket client in `src/hook.rs`: Connect to socket at configured path. Send serialized IpcRequest + newline. Block on response. Handle connection refused → exit 1.
-- [ ] T024 [US1] Stdout JSON writer in `src/hook.rs`: Convert IpcResponse to HookOutput JSON. Allow → `behavior: "allow"`. Deny → `behavior: "deny"` + `message`.
-- [ ] T025 [US1] Exit code logic in `src/hook.rs`: Success (allow/deny) → exit 0 with JSON. Socket connection failed → exit 1 (fallback to terminal). Timeout → exit 1. SIGTERM handler → exit 1. Only two exit codes: 0 (success with JSON) and 1 (any error, triggers terminal fallback).
-- [ ] T026 [US1] Hook timeout in `src/hook.rs`: Client-side safety timeout (slightly less than Claude Code's 600s hook timeout). If IPC response doesn't arrive, exit 1.
-- [ ] T027 [US1] Integration test — full hook flow in `tests/integration/full_flow_test.rs`: Start bot in background. Pipe test HookInput JSON into hook mode. Simulate Telegram callback (mock or direct pending map resolution). Verify hook stdout JSON and exit code 0.
-
-**Checkpoint**: Full MVP working. Permission prompts forwarded to Telegram, approve/deny flows back to Claude Code. `just check` green.
+**Checkpoint**: `vibe-reachout bot` starts, binds socket, connects to Telegram, handles Ctrl+C cleanly
 
 ---
 
-## Phase 4: User Stories 6 & 8 — Always Allow & Install (Priority: P3)
+## Phase 4: US1 & US2 — Approve & Deny Permission from Telegram (Priority: P1) MVP
 
-**Goal**: Always Allow button support and automated hook installation.
+**Goal**: Full permission round-trip: Claude Code → hook → socket → bot → Telegram message → user taps Allow/Deny → response flows back → Claude Code proceeds or blocks
 
-### Tests
+**Independent Test**: Start bot, trigger permission in Claude Code, tap Allow/Deny on Telegram, verify Claude Code proceeds/blocks
 
-- [ ] T028 [P] [US6] Unit test for always-allow response in `tests/hook_test.rs`: IpcResponse with always_allow_suggestion → HookOutput includes `updatedPermissions`.
-- [ ] T029 [P] [US8] Unit test for settings merge in `tests/install_test.rs`: empty file, existing hooks, existing PermissionRequest (update), nested settings preserved.
+- [x] T015 [P] [US1] Implement message formatter in src/telegram/formatter.rs: format_permission_message(ipc_request) → String with project name header (cwd basename), tool-specific formatting (Bash: command in code block, Write: file_path + size, Edit: file + diff snippet, generic: JSON excerpt), truncation at 500 chars per field and 4000 chars total per specs/001-telegram-permission-hook/contracts/telegram-ui.md
+- [x] T016 [P] [US1] Implement inline keyboard builder in src/telegram/keyboard.rs: fn make_keyboard(request_id, has_permission_suggestions) → InlineKeyboardMarkup with Allow and Deny buttons, callback_data format "{uuid}:{action}" per specs/001-telegram-permission-hook/contracts/ipc.md Telegram Callback Data section
+- [x] T017 [P] [US1] Implement IPC client in src/ipc/client.rs: async fn send_request(socket_path, ipc_request, timeout) → Result<IpcResponse> that connects UnixStream, writes NDJSON line, shuts down write half, reads response line with tokio::time::timeout, deserializes IpcResponse
+- [x] T018 [US1] Implement hook mode in src/hook.rs: async fn run_hook(config) that reads all stdin to String, deserializes HookInput, generates UUID v4 request_id, builds IpcRequest, calls ipc::client::send_request, maps IpcResponse to HookOutput JSON per specs/001-telegram-permission-hook/contracts/hook-io.md (Allow→allow behavior, Deny→deny with message, Timeout→exit 1), writes JSON to stdout, exits 0 or 1
+- [x] T019 [US1] Implement Telegram message sending in src/bot.rs: async fn send_permission_to_telegram(bot, config, ipc_request, pending_map) that formats message, builds keyboard, sends to ALL authorized chat_ids (skip failures, proceed if at least one succeeds), stores PendingRequest in DashMap with oneshot sender, sent_messages: Vec<SentMessage> collecting all (chat_id, message_id) pairs, original_text, permission_suggestions, created_at
+- [x] T020 [US1] Implement callback handler for Allow in src/telegram/handler.rs: handle_callback(bot, query, pending_map, config) that answers callback query, parses callback_data "{uuid}:allow", removes PendingRequest from DashMap, sends IpcResponse(Allow) via oneshot, edits ALL sent_messages across all chats to append "✅ Approved" and remove keyboard
+- [x] T021 [US2] Add Deny callback handling in src/telegram/handler.rs: extend handle_callback to parse "{uuid}:deny", send IpcResponse(Deny, message="Denied by user via Telegram"), edit ALL sent_messages to append "❌ Denied" and remove keyboard
+- [x] T022 [US1] Implement IPC server connection handler in src/ipc/server.rs: async fn handle_connection(stream, bot, config, pending_map) that reads IpcRequest NDJSON line, calls send_permission_to_telegram, awaits oneshot receiver, writes IpcResponse NDJSON line back to stream. Note: DashMap keyed by UUID naturally isolates concurrent sessions (US1 AS3 — multiple sessions trigger permissions simultaneously)
+- [x] T023 [US1] Wire hook mode in src/main.rs: when no subcommand, call run_hook(config), catch all errors and exit(1) with stderr logging
+- [x] T024 [US1] Handle late/duplicate callbacks in src/telegram/handler.rs: if request_id not in DashMap, answer callback with "This request has already been handled" show_alert(true)
 
-### Implementation
-
-- [ ] T030 [US6] Always Allow response in `src/hook.rs` AND `src/bot/telegram.rs` (cross-cutting): When IpcResponse has `always_allow_suggestion`, include `updatedPermissions` in HookOutput decision. In bot: callback data `{request_id}:always` triggers this path, using first matching entry from `permission_suggestions`.
-- [ ] T031 [US8] Read existing settings in `src/install.rs`: Read `~/.claude/settings.json`. Handle: file exists, doesn't exist, malformed JSON.
-- [ ] T032 [US8] Merge hook configuration in `src/install.rs`: Add PermissionRequest hook entry. Preserve existing settings. Update if hook already exists. Write back with 2-space indent.
-
-**Checkpoint**: Always Allow works end-to-end. `vibe-reachout install` sets up Claude Code correctly.
+**Checkpoint**: Full approve/deny flow works end-to-end. Claude Code → Telegram → Claude Code
 
 ---
 
-## Phase 5: Polish & Cross-Cutting Concerns
+## Phase 5: US4 — Timeout Fallback to Terminal (Priority: P2)
 
-**Purpose**: Reliability edge cases, CI/CD, documentation.
+**Goal**: If user doesn't respond on Telegram within timeout_seconds, hook exits code 1 and Claude Code shows terminal prompt
 
-- [ ] T033 [US4] Timeout UX: Bot edits Telegram message to "⏱️ Timed out — respond in terminal" on timeout. Late callbacks answered with "This request has already been handled."
-- [ ] T034 [US5] Bot-down edge cases: Verify stderr-only logging in hook mode. Verify clean exit on connection refused.
-- [ ] T035 [US7] Auth edge cases: Multiple authorized users — first response wins, second gets "already handled". Unauthorized callback gets error answer.
-- [ ] T036 CI workflow in `.github/workflows/ci.yml`: fmt --check, clippy, test matrix (macOS + Linux), tarpaulin coverage, cargo audit. Follow Cor CLI patterns.
-- [ ] T037 Release workflow in `.github/workflows/release.yml`: CalVer, git-cliff changelog, cross-compile (macOS aarch64, Linux aarch64 + x86_64), GitHub Release with binaries.
-- [ ] T038 README.md: Setup instructions (install binary, create config, run install, start bot, use Claude Code normally).
-- [ ] T039 Error message audit: Review all error paths for helpful messages (missing config, bad token, socket not found, unauthorized chat ID, bot already running, stale socket).
-- [ ] T040 E2E test — full Claude Code simulation in `tests/integration/e2e_test.rs`: Spawn hook with realistic stdin JSON, verify stdout JSON for all scenarios (allow, deny, always-allow, timeout, bot-down). Include concurrent scenario: spawn 5+ hook processes simultaneously with independent request_ids, verify all receive independent responses (FR-002).
+**Independent Test**: Trigger permission, wait for timeout, verify terminal prompt appears
+
+- [x] T025 [US4] Implement per-request timeout in src/ipc/server.rs: wrap oneshot receiver with tokio::time::timeout(Duration::from_secs(config.timeout_seconds)), on timeout remove PendingRequest from DashMap, write IpcResponse(Timeout) to stream
+- [x] T026 [US4] Edit Telegram message on timeout in src/bot.rs: after timeout fires, edit original message to append "⏱️ Timed out" and remove keyboard
+- [x] T027 [US4] Verify late callbacks after timeout handled by T024 (request_id not in DashMap → "already handled" alert)
+
+**Checkpoint**: Timeout after configured seconds, clean fallback, Telegram message updated
+
+---
+
+## Phase 6: US5 — Bot Down Fallback (Priority: P2)
+
+**Goal**: If bot is not running, hook exits code 1 immediately and Claude Code shows normal terminal prompt
+
+**Independent Test**: Don't start bot, trigger permission, verify terminal prompt appears
+
+- [x] T028 [US5] Handle socket-not-found in src/ipc/client.rs: if socket path doesn't exist, return HookError::SocketNotFound, log to stderr "Bot not running (socket not found)"
+- [x] T029 [US5] Handle connection-refused in src/ipc/client.rs: if UnixStream::connect returns ConnectionRefused, return HookError::ConnectionRefused, log to stderr
+- [x] T030 [US5] Ensure all hook errors result in exit code 1 in src/hook.rs: wrap run_hook in catch-all, log error to stderr at warn level, call std::process::exit(1)
+
+**Checkpoint**: Hook fails gracefully when bot is unavailable, Claude Code falls back to terminal
+
+---
+
+## Phase 7: US6 — Reply with Details from Telegram (Priority: P2)
+
+**Goal**: User can tap Reply, type free-text, and it flows back to Claude Code as a deny with user message
+
+**Independent Test**: Trigger permission, tap Reply, type message, verify Claude Code receives it
+
+- [x] T031 [US6] Add Reply button to inline keyboard in src/telegram/keyboard.rs: add "💬 Reply" button between Deny and Always Allow, callback_data "{uuid}:reply"
+- [x] T032 [US6] Implement Reply callback handler in src/telegram/handler.rs: on "{uuid}:reply" callback, answer query, send new message with ForceReply markup "Type your reply:", track (chat_id → request_id) in ReplyState DashMap<ChatId, Uuid>
+- [x] T033 [US6] Implement Message handler for ForceReply responses in src/telegram/handler.rs: register message handler in dispatcher, check ReplyState for chat_id, extract text, validate non-empty (re-prompt if empty), remove from ReplyState, resolve PendingRequest with IpcResponse(Reply, user_message=text), edit original permission message to "💬 Replied"
+- [x] T034 [US6] Map Reply IpcResponse to HookOutput in src/hook.rs: Decision::Reply → HookOutput deny behavior with message = "User replied: {user_message}" per specs/001-telegram-permission-hook/contracts/hook-io.md
+
+**Checkpoint**: Reply flow works end-to-end, Claude receives user's free-text as denial reason
+
+---
+
+## Phase 8: US7 — Always-Allow a Tool from Telegram (Priority: P3)
+
+**Goal**: User taps "Always Allow" and Claude Code stops prompting for that tool type in the session
+
+**Independent Test**: Tap Always Allow for Bash, verify no further Bash prompts in session
+
+- [x] T035 [US7] Add conditional Always Allow button in src/telegram/keyboard.rs: only show "🔓 Always Allow" button when permission_suggestions is non-empty, callback_data "{uuid}:always"
+- [x] T036 [US7] Implement AlwaysAllow callback handler in src/telegram/handler.rs: on "{uuid}:always" callback, resolve PendingRequest with IpcResponse(AlwaysAllow, always_allow_suggestion from stored PendingRequest.permission_suggestions[0]), edit message to "🔓 Always Allowed"
+- [x] T037 [US7] Map AlwaysAllow IpcResponse to HookOutput in src/hook.rs: Decision::AlwaysAllow → HookOutput allow behavior with updatedPermissions = [always_allow_suggestion] per specs/001-telegram-permission-hook/contracts/hook-io.md
+
+**Checkpoint**: Always-allow flow works, Claude Code applies permission rule for session
+
+---
+
+## Phase 9: US8 — Security: Only Authorized Users Can Respond (Priority: P3)
+
+**Goal**: Only callbacks/messages from authorized chat_ids are processed
+
+**Independent Test**: Send callback from unauthorized chat ID, verify rejection
+
+- [x] T038 [US8] Implement chat_id validation in src/telegram/handler.rs: at top of handle_callback and handle_message, extract chat_id, check config.allowed_chat_ids.contains(), if unauthorized: answer callback with "Unauthorized" show_alert(true), return early
+- [x] T039 [US8] Log unauthorized access attempts in src/telegram/handler.rs: tracing::warn! with unauthorized chat_id for audit trail
+- [x] T040 [US8] Ensure pending request is unaffected by unauthorized callbacks in src/telegram/handler.rs: unauthorized callback must not remove or modify PendingRequest in DashMap
+
+**Checkpoint**: Unauthorized chat IDs are rejected, authorized ones work, pending requests unaffected
+
+---
+
+## Phase 10: US9 — Install the Hook (Priority: P3)
+
+**Goal**: `vibe-reachout install` registers the PermissionRequest hook in Claude Code settings
+
+**Independent Test**: Run `vibe-reachout install`, verify `~/.claude/settings.json` has the hook entry
+
+- [x] T041 [US9] Implement settings.json read/parse in src/install.rs: read ~/.claude/settings.json (create with {} if missing), parse as serde_json::Value, preserve all existing content
+- [x] T042 [US9] Implement hook registration in src/install.rs: navigate to or create hooks.PermissionRequest array, add hook entry per specs/001-telegram-permission-hook/contracts/hook-io.md Hook Configuration section (type: "command", command: "vibe-reachout", timeout: 600)
+- [x] T043 [US9] Handle idempotent install in src/install.rs: if hook with command "vibe-reachout" already exists, update it in place; do not create duplicate entries; preserve other hooks for other events
+- [x] T044 [US9] Wire install subcommand in src/main.rs: call install::run_install(), print success message with path to modified settings file
+
+**Checkpoint**: `vibe-reachout install` adds hook to settings.json, idempotent, preserves existing config
+
+---
+
+## Phase 11: Polish & Cross-Cutting Concerns
+
+**Purpose**: Build optimization, validation, and cleanup
+
+- [x] T045 [P] Configure cross-compilation: add Cross.toml for Linux targets (aarch64-unknown-linux-gnu, x86_64-unknown-linux-gnu), ensure teloxide uses rustls TLS backend (disable default features, add rustls feature)
+- [x] T046 [P] Run cargo clippy --all-targets and fix all warnings
+- [x] T047 Validate binary size: cargo build --release, verify < 20MB
+- [x] T048 Run end-to-end validation per specs/001-telegram-permission-hook/quickstart.md: build, configure, install hook, start bot, trigger permission, approve/deny/reply from Telegram
 
 ---
 
@@ -118,42 +180,87 @@
 
 ### Phase Dependencies
 
-- **Phase 1 (Setup)**: No dependencies — start immediately
-- **Phase 2 (Bot)**: Depends on T001, T003, T004, T005
-- **Phase 3 (Hook)**: Depends on T001, T003, T004, T005. Can run in parallel with Phase 2 (different files)
-- **Phase 4 (Always Allow + Install)**: Depends on Phase 2 + Phase 3 being functional
-- **Phase 5 (Polish)**: Depends on Phase 4
+- **Setup (Phase 1)**: No dependencies — can start immediately
+- **Foundational (Phase 2)**: Depends on Setup — BLOCKS all user stories
+- **US3 (Phase 3)**: Depends on Foundational — BLOCKS US1/US2 (bot must run first)
+- **US1 & US2 (Phase 4)**: Depends on US3 — core approve/deny flow (MVP)
+- **US4 (Phase 5)**: Depends on US1/US2 — adds timeout to existing flow
+- **US5 (Phase 6)**: Depends on Foundational only — hook error handling (can parallel with US3)
+- **US6 (Phase 7)**: Depends on US1/US2 — extends callback handler with Reply flow
+- **US7 (Phase 8)**: Depends on US1/US2 — extends keyboard and callback handler
+- **US8 (Phase 9)**: Depends on US1/US2 — adds validation layer to callback handler
+- **US9 (Phase 10)**: Depends on Foundational only — independent file (can parallel with US3+)
+- **Polish (Phase 11)**: Depends on all desired stories complete
 
-### Within Each Phase
+### User Story Dependencies
 
-- Tests MUST be written and FAIL before implementation (red-green-refactor)
-- Types before services, services before entry points
-- [P] tasks can run in parallel
-- Story complete before moving to next priority
+```
+Setup → Foundational → US3 (bot) → US1+US2 (approve/deny) → US4 (timeout)
+                                                            → US6 (reply)
+                                                            → US7 (always-allow)
+                                                            → US8 (security)
+                       Foundational → US5 (bot-down fallback)  [parallel with US3]
+                       Foundational → US9 (install)             [parallel with US3]
+```
 
 ### Parallel Opportunities
 
+Within Phase 4 (US1+US2):
+- T015, T016, T017 can run in parallel (different files: formatter.rs, keyboard.rs, client.rs)
+
+Across phases after Foundational:
+- US5 and US9 can run in parallel with US3 (no dependency on bot running)
+- US4, US6, US7, US8 can run in parallel after US1+US2 complete
+
+---
+
+## Parallel Example: US1 & US2
+
+```bash
+# Launch these in parallel (different files, no dependencies):
+Task: "Implement message formatter in src/telegram/formatter.rs"     # T015
+Task: "Implement inline keyboard builder in src/telegram/keyboard.rs" # T016
+Task: "Implement IPC client in src/ipc/client.rs"                     # T017
+
+# Then sequentially:
+Task: "Implement hook mode in src/hook.rs"                            # T018 (depends on T017)
+Task: "Implement Telegram message sending in src/bot.rs"              # T019 (depends on T015, T016)
+Task: "Implement callback handler in src/telegram/handler.rs"         # T020 (depends on T019)
 ```
-Phase 1: T002, T003, T004, T005 all [P] — different files, no deps
-Phase 1: T007, T008, T009 all [P] — test files
-Phase 2: T010, T011, T012 all [P] — test files
-Phase 3: T020, T021 [P] — test files
-Phase 4: T028, T029 [P] — test files
-Phase 2 + Phase 3 can overlap (bot/server.rs vs hook.rs — different modules)
-```
+
+---
 
 ## Implementation Strategy
 
-### MVP First (Phases 1–3)
+### MVP First (US3 + US1 + US2)
 
-1. Phase 1: scaffolding + types + config
-2. Phase 2: bot mode (socket server + Telegram)
-3. Phase 3: hook mode (stdin → socket → stdout)
-4. **STOP and VALIDATE**: pipe test JSON, tap buttons, verify end-to-end
-5. Commit + tag as v0.1.0
+1. Complete Phase 1: Setup
+2. Complete Phase 2: Foundational
+3. Complete Phase 3: US3 — Bot starts and listens
+4. Complete Phase 4: US1+US2 — Full approve/deny round-trip
+5. **STOP and VALIDATE**: End-to-end test with real Claude Code
+6. Ship MVP
 
 ### Incremental Delivery
 
-1. Phases 1–3 → MVP (approve + deny)
-2. Phase 4 → always-allow + install convenience
-3. Phase 5 → production quality (CI, cross-compile, docs)
+1. Setup + Foundational → project builds
+2. US3 → bot starts and connects to Telegram
+3. US1+US2 → approve/deny works → **MVP!**
+4. US5 → bot-down fallback (resilience)
+5. US4 → timeout fallback (resilience)
+6. US6 → reply with details (enhanced UX)
+7. US7 → always-allow (convenience)
+8. US8 → security validation (hardening)
+9. US9 → install command (convenience)
+10. Polish → cross-compilation, size validation
+
+---
+
+## Notes
+
+- [P] tasks = different files, no dependencies
+- [Story] label maps task to specific user story
+- US1 and US2 combined in Phase 4 since deny is a small delta on the approve flow
+- Each story checkpoint is independently testable
+- All hook mode errors → exit code 1 (terminal fallback)
+- stdout is ONLY for JSON in hook mode; all logging to stderr

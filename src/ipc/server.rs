@@ -1,0 +1,189 @@
+use crate::error::BotError;
+use crate::models::{IpcRequest, IpcResponse, PendingRequest};
+use dashmap::DashMap;
+use std::path::Path;
+use std::sync::Arc;
+use teloxide::prelude::*;
+use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
+use tokio::net::UnixListener;
+use tokio::sync::oneshot;
+use tokio::time::Instant;
+use tokio_util::sync::CancellationToken;
+use uuid::Uuid;
+
+use crate::config::Config;
+
+pub type PendingMap = Arc<DashMap<Uuid, PendingRequest>>;
+
+pub fn detect_and_clean_stale_socket(socket_path: &Path) -> Result<(), BotError> {
+    if !socket_path.exists() {
+        return Ok(());
+    }
+
+    // Try a synchronous connection to see if a bot is actively listening
+    match std::os::unix::net::UnixStream::connect(socket_path) {
+        Ok(_) => {
+            // Connection succeeded — another bot is running
+            Err(BotError::AlreadyRunning(socket_path.display().to_string()))
+        }
+        Err(e) if e.kind() == std::io::ErrorKind::ConnectionRefused => {
+            // Stale socket — remove it
+            tracing::info!("Removing stale socket at {}", socket_path.display());
+            std::fs::remove_file(socket_path).map_err(BotError::SocketBind)?;
+            Ok(())
+        }
+        Err(_) => {
+            // Other error — try to remove and rebind
+            tracing::warn!(
+                "Unknown socket state at {}, attempting cleanup",
+                socket_path.display()
+            );
+            std::fs::remove_file(socket_path).map_err(BotError::SocketBind)?;
+            Ok(())
+        }
+    }
+}
+
+pub async fn run_server(
+    socket_path: &Path,
+    cancel_token: CancellationToken,
+    bot: Bot,
+    config: Arc<Config>,
+    pending_map: PendingMap,
+) -> Result<(), BotError> {
+    let listener = UnixListener::bind(socket_path).map_err(BotError::SocketBind)?;
+    tracing::info!("Socket server listening on {}", socket_path.display());
+
+    loop {
+        tokio::select! {
+            () = cancel_token.cancelled() => {
+                tracing::info!("Socket server shutting down");
+                break;
+            }
+            accept_result = listener.accept() => {
+                match accept_result {
+                    Ok((stream, _addr)) => {
+                        let bot = bot.clone();
+                        let config = config.clone();
+                        let pending_map = pending_map.clone();
+                        let cancel = cancel_token.clone();
+                        tokio::spawn(async move {
+                            if let Err(e) = handle_connection(stream, bot, config, pending_map, cancel).await {
+                                tracing::error!("Connection handler error: {e}");
+                            }
+                        });
+                    }
+                    Err(e) => {
+                        tracing::error!("Failed to accept connection: {e}");
+                    }
+                }
+            }
+        }
+    }
+
+    // Cleanup socket file
+    if socket_path.exists() {
+        let _ = std::fs::remove_file(socket_path);
+    }
+
+    Ok(())
+}
+
+async fn handle_connection(
+    stream: tokio::net::UnixStream,
+    bot: Bot,
+    config: Arc<Config>,
+    pending_map: PendingMap,
+    cancel_token: CancellationToken,
+) -> anyhow::Result<()> {
+    let (reader, mut writer) = stream.into_split();
+    let mut buf_reader = BufReader::new(reader);
+    let mut line = String::new();
+    buf_reader.read_line(&mut line).await?;
+
+    if line.trim().is_empty() {
+        tracing::warn!("Empty IPC request received");
+        return Ok(());
+    }
+
+    let ipc_request: IpcRequest = serde_json::from_str(line.trim())?;
+    tracing::info!(
+        request_id = %ipc_request.request_id,
+        tool = %ipc_request.tool_name,
+        "Received permission request"
+    );
+
+    let (tx, rx) = oneshot::channel::<IpcResponse>();
+
+    let request_id = ipc_request.request_id;
+
+    // Send to Telegram and store pending request
+    let sent_messages =
+        crate::bot::send_permission_to_telegram(&bot, &config, &ipc_request).await?;
+
+    let original_text = crate::telegram::formatter::format_permission_message(&ipc_request);
+
+    pending_map.insert(
+        request_id,
+        PendingRequest {
+            request_id,
+            sender: tx,
+            sent_messages,
+            original_text,
+            permission_suggestions: ipc_request.permission_suggestions,
+            created_at: Instant::now(),
+        },
+    );
+
+    // Wait for response with timeout
+    let timeout_duration = std::time::Duration::from_secs(config.timeout_seconds);
+    let response = tokio::select! {
+        () = cancel_token.cancelled() => {
+            pending_map.remove(&request_id);
+            IpcResponse {
+                request_id,
+                decision: crate::models::Decision::Timeout,
+                message: None,
+                user_message: None,
+                always_allow_suggestion: None,
+            }
+        }
+        result = tokio::time::timeout(timeout_duration, rx) => {
+            match result {
+                Ok(Ok(response)) => response,
+                Ok(Err(_)) => {
+                    // Sender dropped (shouldn't happen normally)
+                    pending_map.remove(&request_id);
+                    IpcResponse {
+                        request_id,
+                        decision: crate::models::Decision::Timeout,
+                        message: None,
+                        user_message: None,
+                        always_allow_suggestion: None,
+                    }
+                }
+                Err(_) => {
+                    // Timeout
+                    tracing::warn!(request_id = %request_id, "Request timed out");
+                    if let Some((_, pending)) = pending_map.remove(&request_id) {
+                        crate::bot::edit_messages_status(&bot, &pending.sent_messages, &pending.original_text, "\u{23f1}\u{fe0f} Timed out").await;
+                    }
+                    IpcResponse {
+                        request_id,
+                        decision: crate::models::Decision::Timeout,
+                        message: None,
+                        user_message: None,
+                        always_allow_suggestion: None,
+                    }
+                }
+            }
+        }
+    };
+
+    // Write NDJSON response back
+    let mut json = serde_json::to_string(&response)?;
+    json.push('\n');
+    writer.write_all(json.as_bytes()).await?;
+
+    Ok(())
+}

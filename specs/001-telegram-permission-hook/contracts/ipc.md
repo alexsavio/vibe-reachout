@@ -4,7 +4,10 @@
 
 Communication between hook mode and bot mode processes uses a Unix domain socket. The bot process is the server; each hook invocation is a client.
 
-Socket path: configurable, default `/tmp/vibe-reachout.sock`.
+Socket path resolution:
+1. Config override: `socket_path` in `~/.config/vibe-reachout/config.toml`
+2. `$XDG_RUNTIME_DIR/vibe-reachout.sock` (Linux)
+3. `/tmp/vibe-reachout-{uid}.sock` (macOS / fallback)
 
 ## Protocol
 
@@ -52,8 +55,9 @@ Sent from bot mode → hook mode.
 ```json
 {
   "request_id": "uuid-v4",
-  "decision": "allow",
+  "decision": "Allow",
   "message": null,
+  "user_message": null,
   "always_allow_suggestion": null
 }
 ```
@@ -61,19 +65,22 @@ Sent from bot mode → hook mode.
 | Field | Type | Required | Description |
 | --- | --- | --- | --- |
 | `request_id` | UUID v4 string | yes | Matches the request |
-| `decision` | `"allow"` \| `"deny"` \| `"timeout"` | yes | User's decision |
+| `decision` | enum string | yes | "Allow", "Deny", "AlwaysAllow", "Reply", "Timeout" |
 | `message` | string \| null | no | Reason (used for deny) |
+| `user_message` | string \| null | no | Free-text from user's Reply action |
 | `always_allow_suggestion` | object \| null | no | Permission suggestion to apply (from `permission_suggestions`) |
 
 ### Decision values
 
 | Value | Hook behavior |
 | --- | --- |
-| `"allow"` | Exit 0, output allow JSON |
-| `"deny"` | Exit 0, output deny JSON with message |
-| `"timeout"` | Exit 1, no output (Claude Code falls back to terminal) |
+| `"Allow"` | Exit 0, output allow JSON |
+| `"Deny"` | Exit 0, output deny JSON with message |
+| `"AlwaysAllow"` | Exit 0, output allow JSON with updatedPermissions |
+| `"Reply"` | Exit 0, output deny JSON with message = "User replied: {user_message}" |
+| `"Timeout"` | Exit 1, no output (Claude Code falls back to terminal) |
 
-When `always_allow_suggestion` is present alongside `"allow"`, the hook includes `updatedPermissions` in the Claude Code output.
+When `always_allow_suggestion` is present alongside `"Allow"`, the hook includes `updatedPermissions` in the Claude Code output.
 
 ## Telegram Callback Data
 
@@ -83,6 +90,7 @@ Encoded in inline keyboard button callback data. Format: `{request_id}:{action}`
 | --- | --- |
 | `allow` | Approve this tool call |
 | `deny` | Deny this tool call |
+| `reply` | Initiate free-text reply flow |
 | `always` | Approve and always allow this tool |
 
 Example: `550e8400-e29b-41d4-a716-446655440000:allow`

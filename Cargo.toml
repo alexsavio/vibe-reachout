@@ -3,6 +3,12 @@ name = "vibe-reachout"
 version = "0.1.0"
 edition = "2024"
 rust-version = "1.85"
+description = "Approve Claude Code permission prompts from your phone via Telegram"
+license = "MIT"
+repository = "https://github.com/alexsavio/vibe-reachout"
+readme = "README.md"
+keywords = ["claude-code", "telegram", "hooks", "cli", "automation"]
+categories = ["command-line-utilities", "development-tools"]
 
 [dependencies]
 tokio = { version = "1", features = ["rt-multi-thread", "macros", "net", "io-util", "io-std", "signal", "time", "fs"] }
@@ -20,6 +26,9 @@ tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 dirs = "5"
 libc = "0.2"
+
+[dev-dependencies]
+tempfile = "3"
 
 [profile.release]
 strip = true

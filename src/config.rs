@@ -11,17 +11,25 @@ pub struct Config {
     pub socket_path: Option<PathBuf>,
 }
 
-fn default_timeout() -> u64 {
+const fn default_timeout() -> u64 {
     300
 }
 
 impl Config {
     pub fn load() -> anyhow::Result<Self> {
         let config_path = config_file_path()?;
-        let contents = std::fs::read_to_string(&config_path).map_err(|e| {
-            BotError::ConfigInvalid(format!("Cannot read config at {}: {}", config_path.display(), e))
+        Self::load_from_path(&config_path)
+    }
+
+    pub fn load_from_path(config_path: &std::path::Path) -> anyhow::Result<Self> {
+        let contents = std::fs::read_to_string(config_path).map_err(|e| {
+            BotError::ConfigInvalid(format!(
+                "Cannot read config at {}: {}",
+                config_path.display(),
+                e
+            ))
         })?;
-        let config: Config = toml::from_str(&contents).map_err(|e| {
+        let config: Self = toml::from_str(&contents).map_err(|e| {
             BotError::ConfigInvalid(format!("Invalid TOML in {}: {}", config_path.display(), e))
         })?;
         config.validate()?;
@@ -74,4 +82,158 @@ pub fn default_socket_path() -> PathBuf {
     // 2. /tmp/vibe-reachout-{uid}.sock (macOS / fallback)
     let uid = unsafe { libc::getuid() };
     PathBuf::from(format!("/tmp/vibe-reachout-{uid}.sock"))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn write_config(dir: &std::path::Path, content: &str) -> PathBuf {
+        let path = dir.join("config.toml");
+        std::fs::write(&path, content).unwrap();
+        path
+    }
+
+    #[test]
+    fn load_valid_config() {
+        let tmp = tempfile::tempdir().unwrap();
+        let path = write_config(
+            tmp.path(),
+            r#"
+            telegram_bot_token = "123:ABC"
+            allowed_chat_ids = [12345]
+            timeout_seconds = 120
+            "#,
+        );
+        let config = Config::load_from_path(&path).unwrap();
+        assert_eq!(config.telegram_bot_token, "123:ABC");
+        assert_eq!(config.allowed_chat_ids, vec![12345]);
+        assert_eq!(config.timeout_seconds, 120);
+        assert!(config.socket_path.is_none());
+    }
+
+    #[test]
+    fn default_timeout_is_300() {
+        let tmp = tempfile::tempdir().unwrap();
+        let path = write_config(
+            tmp.path(),
+            r#"
+            telegram_bot_token = "tok"
+            allowed_chat_ids = [1]
+            "#,
+        );
+        let config = Config::load_from_path(&path).unwrap();
+        assert_eq!(config.timeout_seconds, 300);
+    }
+
+    #[test]
+    fn empty_token_rejected() {
+        let tmp = tempfile::tempdir().unwrap();
+        let path = write_config(
+            tmp.path(),
+            r#"
+            telegram_bot_token = ""
+            allowed_chat_ids = [1]
+            "#,
+        );
+        let err = Config::load_from_path(&path).unwrap_err();
+        assert!(err.to_string().contains("telegram_bot_token"));
+    }
+
+    #[test]
+    fn empty_chat_ids_rejected() {
+        let tmp = tempfile::tempdir().unwrap();
+        let path = write_config(
+            tmp.path(),
+            r#"
+            telegram_bot_token = "tok"
+            allowed_chat_ids = []
+            "#,
+        );
+        let err = Config::load_from_path(&path).unwrap_err();
+        assert!(err.to_string().contains("allowed_chat_ids"));
+    }
+
+    #[test]
+    fn timeout_zero_rejected() {
+        let tmp = tempfile::tempdir().unwrap();
+        let path = write_config(
+            tmp.path(),
+            r#"
+            telegram_bot_token = "tok"
+            allowed_chat_ids = [1]
+            timeout_seconds = 0
+            "#,
+        );
+        assert!(Config::load_from_path(&path).is_err());
+    }
+
+    #[test]
+    fn timeout_3601_rejected() {
+        let tmp = tempfile::tempdir().unwrap();
+        let path = write_config(
+            tmp.path(),
+            r#"
+            telegram_bot_token = "tok"
+            allowed_chat_ids = [1]
+            timeout_seconds = 3601
+            "#,
+        );
+        assert!(Config::load_from_path(&path).is_err());
+    }
+
+    #[test]
+    fn timeout_boundary_values_accepted() {
+        let tmp = tempfile::tempdir().unwrap();
+        for timeout in [1, 3600] {
+            let path = write_config(
+                tmp.path(),
+                &format!(
+                    r#"
+                    telegram_bot_token = "tok"
+                    allowed_chat_ids = [1]
+                    timeout_seconds = {timeout}
+                    "#
+                ),
+            );
+            assert!(Config::load_from_path(&path).is_ok());
+        }
+    }
+
+    #[test]
+    fn effective_socket_path_uses_custom_if_set() {
+        let tmp = tempfile::tempdir().unwrap();
+        let sock = tmp.path().join("custom.sock");
+        let path = write_config(
+            tmp.path(),
+            &format!(
+                "telegram_bot_token = \"tok\"\nallowed_chat_ids = [1]\nsocket_path = \"{}\"",
+                sock.display()
+            ),
+        );
+        let config = Config::load_from_path(&path).unwrap();
+        assert_eq!(config.effective_socket_path(), sock);
+    }
+
+    #[test]
+    fn effective_socket_path_falls_back_to_default() {
+        let tmp = tempfile::tempdir().unwrap();
+        let path = write_config(
+            tmp.path(),
+            r#"
+            telegram_bot_token = "tok"
+            allowed_chat_ids = [1]
+            "#,
+        );
+        let config = Config::load_from_path(&path).unwrap();
+        assert_eq!(config.effective_socket_path(), default_socket_path());
+    }
+
+    #[test]
+    fn default_socket_path_contains_expected_name() {
+        let path = default_socket_path();
+        let path_str = path.to_string_lossy();
+        assert!(path_str.contains("vibe-reachout"));
+        assert!(path_str.ends_with(".sock"));
+    }
 }

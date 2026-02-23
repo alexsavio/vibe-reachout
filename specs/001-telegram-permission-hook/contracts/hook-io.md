@@ -143,6 +143,22 @@ These are the "always allow" options the user would see in the terminal dialog.
 }
 ```
 
+#### Deny with user reply (free-text)
+
+When the user taps "Reply" on Telegram and sends free-text, the hook denies the tool call but includes the user's message so Claude can read it as feedback.
+
+```json
+{
+  "hookSpecificOutput": {
+    "hookEventName": "PermissionRequest",
+    "decision": {
+      "behavior": "deny",
+      "message": "User replied: Use yarn instead of npm for this project"
+    }
+  }
+}
+```
+
 #### Allow with modified input (optional, not in MVP)
 
 ```json

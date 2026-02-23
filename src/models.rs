@@ -150,10 +150,16 @@ mod tests {
             "PermissionRequest"
         );
         assert_eq!(json["hookSpecificOutput"]["decision"]["behavior"], "allow");
-        assert!(json["hookSpecificOutput"]["decision"].get("message").is_none());
-        assert!(json["hookSpecificOutput"]["decision"]
-            .get("updatedPermissions")
-            .is_none());
+        assert!(
+            json["hookSpecificOutput"]["decision"]
+                .get("message")
+                .is_none()
+        );
+        assert!(
+            json["hookSpecificOutput"]["decision"]
+                .get("updatedPermissions")
+                .is_none()
+        );
     }
 
     #[test]

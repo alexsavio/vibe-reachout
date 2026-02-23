@@ -69,7 +69,10 @@ impl Config {
 fn config_file_path() -> anyhow::Result<PathBuf> {
     let home = dirs::home_dir()
         .ok_or_else(|| BotError::ConfigInvalid("Cannot determine home directory".to_string()))?;
-    Ok(home.join(".config").join("vibe-reachout").join("config.toml"))
+    Ok(home
+        .join(".config")
+        .join("vibe-reachout")
+        .join("config.toml"))
 }
 
 pub fn default_socket_path() -> PathBuf {
@@ -226,6 +229,21 @@ mod tests {
         );
         let config = Config::load_from_path(&path).unwrap();
         assert_eq!(config.effective_socket_path(), default_socket_path());
+    }
+
+    #[test]
+    fn socket_path_with_nonexistent_parent_rejected() {
+        let tmp = tempfile::tempdir().unwrap();
+        let path = write_config(
+            tmp.path(),
+            r#"
+            telegram_bot_token = "tok"
+            allowed_chat_ids = [1]
+            socket_path = "/nonexistent/dir/test.sock"
+            "#,
+        );
+        let err = Config::load_from_path(&path).unwrap_err();
+        assert!(err.to_string().contains("socket_path parent directory"));
     }
 
     #[test]

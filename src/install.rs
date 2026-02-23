@@ -141,9 +141,7 @@ mod tests {
         install_hook(&path).unwrap();
 
         let settings = read_settings(&path);
-        let arr = settings["hooks"]["PermissionRequest"]
-            .as_array()
-            .unwrap();
+        let arr = settings["hooks"]["PermissionRequest"].as_array().unwrap();
         // Should still be exactly 1 entry, not duplicated
         assert_eq!(arr.len(), 1);
     }

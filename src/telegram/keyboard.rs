@@ -47,10 +47,7 @@ mod tests {
         let buttons = &kb.inline_keyboard[0];
 
         let id_str = id.to_string();
-        for (button, expected_action) in buttons
-            .iter()
-            .zip(["allow", "deny", "reply", "always"])
-        {
+        for (button, expected_action) in buttons.iter().zip(["allow", "deny", "reply", "always"]) {
             let expected_data = format!("{id_str}:{expected_action}");
             // InlineKeyboardButton callback_data is in the kind field
             match &button.kind {

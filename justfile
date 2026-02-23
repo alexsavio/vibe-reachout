@@ -40,6 +40,7 @@ format:
 # Check formatting without modifying files
 format-check:
     cargo fmt -- --check
+    rumdl check *.md
 
 # Run all quality checks
 check: format-check lint test

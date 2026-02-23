@@ -187,3 +187,39 @@ async fn handle_connection(
 
     Ok(())
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn no_socket_returns_ok() {
+        let tmp = tempfile::tempdir().unwrap();
+        let sock = tmp.path().join("nonexistent.sock");
+        assert!(detect_and_clean_stale_socket(&sock).is_ok());
+    }
+
+    #[test]
+    fn stale_socket_is_removed() {
+        let tmp = tempfile::tempdir().unwrap();
+        let sock = tmp.path().join("stale.sock");
+        // Create a listener then drop it to leave a stale socket file
+        {
+            let _listener = std::os::unix::net::UnixListener::bind(&sock).unwrap();
+        }
+        assert!(sock.exists());
+        assert!(detect_and_clean_stale_socket(&sock).is_ok());
+        assert!(!sock.exists());
+    }
+
+    #[test]
+    fn active_socket_returns_already_running() {
+        let tmp = tempfile::tempdir().unwrap();
+        let sock = tmp.path().join("active.sock");
+        let _listener = std::os::unix::net::UnixListener::bind(&sock).unwrap();
+        let result = detect_and_clean_stale_socket(&sock);
+        assert!(result.is_err());
+        let err = result.unwrap_err();
+        assert!(matches!(err, BotError::AlreadyRunning(_)));
+    }
+}

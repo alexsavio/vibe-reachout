@@ -81,7 +81,8 @@ fn truncate_field(s: &str, max: usize) -> String {
     if s.len() <= max {
         s.to_string()
     } else {
-        format!("{}... (truncated)", &s[..max])
+        let boundary = s.floor_char_boundary(max);
+        format!("{}... (truncated)", &s[..boundary])
     }
 }
 
@@ -89,7 +90,8 @@ fn truncate_message(s: &str, max: usize) -> String {
     if s.len() <= max {
         s.to_string()
     } else {
-        format!("{}... (truncated)", &s[..max])
+        let boundary = s.floor_char_boundary(max);
+        format!("{}... (truncated)", &s[..boundary])
     }
 }
 
@@ -164,10 +166,7 @@ mod tests {
 
     #[test]
     fn format_unknown_tool_shows_json() {
-        let req = make_request(
-            "CustomTool",
-            serde_json::json!({"key": "value"}),
-        );
+        let req = make_request("CustomTool", serde_json::json!({"key": "value"}));
         let msg = format_permission_message(&req);
         assert!(msg.contains("CustomTool"));
         assert!(msg.contains("key"));
@@ -220,5 +219,34 @@ mod tests {
         assert!(msg.contains("abcdef12"));
         // Should not contain full session ID
         assert!(!msg.contains("abcdef1234567890"));
+    }
+
+    #[test]
+    fn truncate_field_on_multibyte_utf8() {
+        // Emoji (4 bytes each): cutting at byte 5 would land inside the second emoji
+        let input = "\u{1f600}\u{1f601}\u{1f602}\u{1f603}"; // 4 emoji = 16 bytes
+        let result = truncate_field(input, 5);
+        // Should truncate at char boundary (after first emoji, byte 4)
+        assert!(result.starts_with("\u{1f600}"));
+        assert!(result.ends_with("... (truncated)"));
+        // Must not contain the second emoji fully
+        assert!(!result.contains("\u{1f601}\u{1f602}\u{1f603}"));
+
+        // CJK characters (3 bytes each): cutting at byte 4 lands inside second char
+        let cjk = "\u{4e16}\u{754c}\u{4f60}\u{597d}"; // 4 CJK = 12 bytes
+        let result = truncate_field(cjk, 4);
+        assert!(result.starts_with("\u{4e16}"));
+        assert!(result.ends_with("... (truncated)"));
+    }
+
+    #[test]
+    fn truncate_message_on_multibyte_utf8() {
+        let input = "Hello \u{1f30d}\u{1f30d}\u{1f30d}".to_string() + &"x".repeat(4000);
+        let result = truncate_message(&input, 10);
+        // Byte 10 lands inside the second emoji (6 ASCII + 4 bytes of first emoji = 10)
+        // floor_char_boundary(10) = 10 (end of first emoji)
+        assert!(result.ends_with("... (truncated)"));
+        // Should not panic and should be valid UTF-8
+        assert!(result.is_char_boundary(0));
     }
 }

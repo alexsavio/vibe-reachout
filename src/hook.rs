@@ -30,7 +30,8 @@ pub async fn run_hook(config: &Config) -> anyhow::Result<()> {
     // Send to bot and wait for response (timeout handled by bot side)
     // Hook-side timeout is config.timeout_seconds + 30s buffer
     let ipc_timeout = config.timeout_seconds + 30;
-    let response = crate::ipc::client::send_request(&socket_path, &ipc_request, ipc_timeout).await?;
+    let response =
+        crate::ipc::client::send_request(&socket_path, &ipc_request, ipc_timeout).await?;
 
     // Map IpcResponse to HookOutput
     let output = match response.decision {

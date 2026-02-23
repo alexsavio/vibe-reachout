@@ -46,15 +46,14 @@ impl Config {
         if self.timeout_seconds == 0 || self.timeout_seconds > 3600 {
             anyhow::bail!("timeout_seconds must be between 1 and 3600");
         }
-        if let Some(ref path) = self.socket_path {
-            if let Some(parent) = path.parent() {
-                if !parent.exists() {
-                    anyhow::bail!(
-                        "socket_path parent directory does not exist: {}",
-                        parent.display()
-                    );
-                }
-            }
+        if let Some(ref path) = self.socket_path
+            && let Some(parent) = path.parent()
+            && !parent.exists()
+        {
+            anyhow::bail!(
+                "socket_path parent directory does not exist: {}",
+                parent.display()
+            );
         }
         Ok(())
     }

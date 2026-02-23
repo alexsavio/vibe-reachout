@@ -21,64 +21,37 @@ pub async fn run_bot(config: Config) -> anyhow::Result<()> {
     let reply_state: ReplyState = Arc::new(DashMap::new());
     let cancel_token = CancellationToken::new();
 
-    // Set up signal handler
-    let cancel_for_signal = cancel_token.clone();
-    tokio::spawn(async move {
-        let ctrl_c = tokio::signal::ctrl_c();
-        #[cfg(unix)]
-        {
-            let mut sigterm =
-                tokio::signal::unix::signal(tokio::signal::unix::SignalKind::terminate())
-                    .expect("Failed to register SIGTERM handler");
-            tokio::select! {
-                _ = ctrl_c => {
-                    tracing::info!("Received SIGINT, shutting down...");
-                }
-                _ = sigterm.recv() => {
-                    tracing::info!("Received SIGTERM, shutting down...");
-                }
+    spawn_signal_handler(cancel_token.clone());
+
+    let handler = {
+        let callback_handler = Update::filter_callback_query().endpoint({
+            let config = config.clone();
+            let pending = pending_map.clone();
+            let reply = reply_state.clone();
+            move |bot: Bot, query: CallbackQuery| {
+                let config = config.clone();
+                let pending = pending.clone();
+                let reply = reply.clone();
+                async move { handler::handle_callback(bot, query, config, pending, reply).await }
             }
-        }
-        #[cfg(not(unix))]
-        {
-            ctrl_c.await.expect("Failed to register Ctrl+C handler");
-            tracing::info!("Received Ctrl+C, shutting down...");
-        }
-        cancel_for_signal.cancel();
-    });
+        });
 
-    // Build Telegram dispatcher
-    let config_for_handler = config.clone();
-    let pending_for_handler = pending_map.clone();
-    let reply_for_handler = reply_state.clone();
-
-    let callback_handler = Update::filter_callback_query().endpoint({
-        let config = config_for_handler.clone();
-        let pending = pending_for_handler.clone();
-        let reply = reply_for_handler.clone();
-        move |bot: Bot, query: CallbackQuery| {
+        let message_handler = Update::filter_message().endpoint({
             let config = config.clone();
-            let pending = pending.clone();
-            let reply = reply.clone();
-            async move { handler::handle_callback(bot, query, config, pending, reply).await }
-        }
-    });
+            let pending = pending_map.clone();
+            let reply = reply_state;
+            move |bot: Bot, msg: Message| {
+                let config = config.clone();
+                let pending = pending.clone();
+                let reply = reply.clone();
+                async move { handler::handle_message(bot, msg, config, pending, reply).await }
+            }
+        });
 
-    let message_handler = Update::filter_message().endpoint({
-        let config = config_for_handler.clone();
-        let pending = pending_for_handler.clone();
-        let reply = reply_for_handler.clone();
-        move |bot: Bot, msg: Message| {
-            let config = config.clone();
-            let pending = pending.clone();
-            let reply = reply.clone();
-            async move { handler::handle_message(bot, msg, config, pending, reply).await }
-        }
-    });
-
-    let handler = dptree::entry()
-        .branch(callback_handler)
-        .branch(message_handler);
+        dptree::entry()
+            .branch(callback_handler)
+            .branch(message_handler)
+    };
 
     let cancel_for_dispatcher = cancel_token.clone();
 
@@ -92,14 +65,16 @@ pub async fn run_bot(config: Config) -> anyhow::Result<()> {
     );
 
     let dispatcher = async {
-        Dispatcher::builder(bot.clone(), handler)
-            .enable_ctrlc_handler()
-            .build()
-            .dispatch_with_listener(
-                teloxide::update_listeners::polling_default(bot.clone()).await,
-                LoggingErrorHandler::with_custom_text("Dispatcher error"),
-            )
-            .await;
+        Box::pin(
+            Dispatcher::builder(bot.clone(), handler)
+                .enable_ctrlc_handler()
+                .build()
+                .dispatch_with_listener(
+                    teloxide::update_listeners::polling_default(bot.clone()).await,
+                    LoggingErrorHandler::with_custom_text("Dispatcher error"),
+                ),
+        )
+        .await;
     };
 
     tracing::info!("Bot started. Listening for permissions...");
@@ -110,22 +85,50 @@ pub async fn run_bot(config: Config) -> anyhow::Result<()> {
                 tracing::error!("Socket server error: {e}");
             }
         }
-        _ = dispatcher => {
+        () = dispatcher => {
             tracing::info!("Telegram dispatcher stopped");
         }
-        _ = cancel_for_dispatcher.cancelled() => {
+        () = cancel_for_dispatcher.cancelled() => {
             tracing::info!("Shutdown signal received");
         }
     }
 
-    // Resolve all pending requests with Timeout
-    for entry in pending_map.iter() {
-        tracing::info!(request_id = %entry.key(), "Resolving pending request as timeout on shutdown");
-    }
-    // Remove and send timeout for each
+    drain_pending_requests(&pending_map);
+
+    Ok(())
+}
+
+fn spawn_signal_handler(cancel_token: CancellationToken) {
+    tokio::spawn(async move {
+        let ctrl_c = tokio::signal::ctrl_c();
+        #[cfg(unix)]
+        {
+            let mut sigterm =
+                tokio::signal::unix::signal(tokio::signal::unix::SignalKind::terminate())
+                    .expect("Failed to register SIGTERM handler");
+            tokio::select! {
+                () = async { ctrl_c.await.expect("ctrl_c failed"); } => {
+                    tracing::info!("Received SIGINT, shutting down...");
+                }
+                _ = sigterm.recv() => {
+                    tracing::info!("Received SIGTERM, shutting down...");
+                }
+            }
+        }
+        #[cfg(not(unix))]
+        {
+            ctrl_c.await.expect("Failed to register Ctrl+C handler");
+            tracing::info!("Received Ctrl+C, shutting down...");
+        }
+        cancel_token.cancel();
+    });
+}
+
+fn drain_pending_requests(pending_map: &PendingMap) {
     let keys: Vec<_> = pending_map.iter().map(|e| *e.key()).collect();
     for key in keys {
         if let Some((_, pending)) = pending_map.remove(&key) {
+            tracing::info!(request_id = %key, "Resolving pending request as timeout on shutdown");
             let _ = pending.sender.send(crate::models::IpcResponse {
                 request_id: key,
                 decision: crate::models::Decision::Timeout,
@@ -135,8 +138,6 @@ pub async fn run_bot(config: Config) -> anyhow::Result<()> {
             });
         }
     }
-
-    Ok(())
 }
 
 pub async fn send_permission_to_telegram(

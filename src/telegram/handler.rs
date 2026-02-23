@@ -16,16 +16,12 @@ pub async fn handle_callback(
     pending_map: PendingMap,
     reply_state: ReplyState,
 ) -> Result<(), teloxide::RequestError> {
-    let chat_id = query
-        .message
-        .as_ref()
-        .map(|m| m.chat().id)
-        .unwrap_or(ChatId(0));
+    let chat_id = query.message.as_ref().map_or(ChatId(0), |m| m.chat().id);
 
     // Authorization check
     if !config.allowed_chat_ids.contains(&chat_id.0) {
         tracing::warn!(chat_id = chat_id.0, "Unauthorized callback attempt");
-        bot.answer_callback_query(&query.id)
+        bot.answer_callback_query(query.id.clone())
             .text("Unauthorized")
             .show_alert(true)
             .await?;
@@ -43,15 +39,14 @@ pub async fn handle_callback(
         return Ok(());
     }
 
-    let request_id = match Uuid::parse_str(parts[0]) {
-        Ok(id) => id,
-        Err(_) => return Ok(()),
+    let Ok(request_id) = Uuid::parse_str(parts[0]) else {
+        return Ok(());
     };
     let action = parts[1];
 
     // Handle reply action specially — don't resolve yet
     if action == "reply" {
-        bot.answer_callback_query(&query.id).await?;
+        bot.answer_callback_query(query.id.clone()).await?;
 
         if pending_map.contains_key(&request_id) {
             // Send ForceReply prompt
@@ -70,19 +65,16 @@ pub async fn handle_callback(
     }
 
     // For allow/deny/always — resolve the pending request
-    let pending = match pending_map.remove(&request_id) {
-        Some((_, p)) => p,
-        None => {
-            // Already handled
-            bot.answer_callback_query(&query.id)
-                .text("This request has already been handled")
-                .show_alert(true)
-                .await?;
-            return Ok(());
-        }
+    let Some((_, pending)) = pending_map.remove(&request_id) else {
+        // Already handled
+        bot.answer_callback_query(query.id.clone())
+            .text("This request has already been handled")
+            .show_alert(true)
+            .await?;
+        return Ok(());
     };
 
-    bot.answer_callback_query(&query.id).await?;
+    bot.answer_callback_query(query.id.clone()).await?;
 
     let (response, status_text) = match action {
         "allow" => (
@@ -106,10 +98,7 @@ pub async fn handle_callback(
             "\u{274c} Denied",
         ),
         "always" => {
-            let suggestion = pending
-                .permission_suggestions
-                .first()
-                .cloned();
+            let suggestion = pending.permission_suggestions.first().cloned();
             (
                 IpcResponse {
                     request_id,
@@ -125,7 +114,13 @@ pub async fn handle_callback(
     };
 
     // Edit ALL sent messages to show status
-    crate::bot::edit_messages_status(&bot, &pending.sent_messages, &pending.original_text, status_text).await;
+    crate::bot::edit_messages_status(
+        &bot,
+        &pending.sent_messages,
+        &pending.original_text,
+        status_text,
+    )
+    .await;
 
     // Send response via oneshot channel
     let _ = pending.sender.send(response);
@@ -149,9 +144,8 @@ pub async fn handle_message(
     }
 
     // Check if this is a reply to a ForceReply prompt
-    let (request_id, prompt_message_id) = match reply_state.remove(&chat_id) {
-        Some((_, entry)) => entry,
-        None => return Ok(()), // Not a reply we're tracking
+    let Some((_, (request_id, prompt_message_id))) = reply_state.remove(&chat_id) else {
+        return Ok(()); // Not a reply we're tracking
     };
 
     let text = msg.text().unwrap_or("").trim().to_string();
@@ -167,13 +161,10 @@ pub async fn handle_message(
     }
 
     // Resolve the pending request
-    let pending = match pending_map.remove(&request_id) {
-        Some((_, p)) => p,
-        None => {
-            bot.send_message(chat_id, "This request has already been handled.")
-                .await?;
-            return Ok(());
-        }
+    let Some((_, pending)) = pending_map.remove(&request_id) else {
+        bot.send_message(chat_id, "This request has already been handled.")
+            .await?;
+        return Ok(());
     };
 
     let response = IpcResponse {
@@ -185,7 +176,13 @@ pub async fn handle_message(
     };
 
     // Edit ALL sent messages
-    crate::bot::edit_messages_status(&bot, &pending.sent_messages, &pending.original_text, "\u{1f4ac} Replied").await;
+    crate::bot::edit_messages_status(
+        &bot,
+        &pending.sent_messages,
+        &pending.original_text,
+        "\u{1f4ac} Replied",
+    )
+    .await;
 
     // Delete the ForceReply prompt message (best-effort)
     let _ = bot.delete_message(chat_id, prompt_message_id).await;
@@ -195,4 +192,3 @@ pub async fn handle_message(
 
     Ok(())
 }
-

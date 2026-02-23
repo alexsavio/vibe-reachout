@@ -29,15 +29,16 @@ pub fn detect_and_clean_stale_socket(socket_path: &Path) -> Result<(), BotError>
         Err(e) if e.kind() == std::io::ErrorKind::ConnectionRefused => {
             // Stale socket — remove it
             tracing::info!("Removing stale socket at {}", socket_path.display());
-            std::fs::remove_file(socket_path)
-                .map_err(BotError::SocketBind)?;
+            std::fs::remove_file(socket_path).map_err(BotError::SocketBind)?;
             Ok(())
         }
         Err(_) => {
             // Other error — try to remove and rebind
-            tracing::warn!("Unknown socket state at {}, attempting cleanup", socket_path.display());
-            std::fs::remove_file(socket_path)
-                .map_err(BotError::SocketBind)?;
+            tracing::warn!(
+                "Unknown socket state at {}, attempting cleanup",
+                socket_path.display()
+            );
+            std::fs::remove_file(socket_path).map_err(BotError::SocketBind)?;
             Ok(())
         }
     }
@@ -55,7 +56,7 @@ pub async fn run_server(
 
     loop {
         tokio::select! {
-            _ = cancel_token.cancelled() => {
+            () = cancel_token.cancelled() => {
                 tracing::info!("Socket server shutting down");
                 break;
             }
@@ -117,7 +118,8 @@ async fn handle_connection(
     let request_id = ipc_request.request_id;
 
     // Send to Telegram and store pending request
-    let sent_messages = crate::bot::send_permission_to_telegram(&bot, &config, &ipc_request).await?;
+    let sent_messages =
+        crate::bot::send_permission_to_telegram(&bot, &config, &ipc_request).await?;
 
     let original_text = crate::telegram::formatter::format_permission_message(&ipc_request);
 
@@ -136,7 +138,7 @@ async fn handle_connection(
     // Wait for response with timeout
     let timeout_duration = std::time::Duration::from_secs(config.timeout_seconds);
     let response = tokio::select! {
-        _ = cancel_token.cancelled() => {
+        () = cancel_token.cancelled() => {
             pending_map.remove(&request_id);
             IpcResponse {
                 request_id,

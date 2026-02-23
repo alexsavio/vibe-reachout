@@ -11,7 +11,10 @@ use clap::{Parser, Subcommand};
 use tracing_subscriber::EnvFilter;
 
 #[derive(Parser)]
-#[command(name = "vibe-reachout", about = "Telegram permission hook for Claude Code")]
+#[command(
+    name = "vibe-reachout",
+    about = "Telegram permission hook for Claude Code"
+)]
 struct Cli {
     #[command(subcommand)]
     command: Option<Commands>,
@@ -27,7 +30,8 @@ enum Commands {
 
 fn init_tracing(is_hook_mode: bool) {
     let default_level = if is_hook_mode { "warn" } else { "info" };
-    let filter = EnvFilter::try_from_default_env().unwrap_or_else(|_| EnvFilter::new(default_level));
+    let filter =
+        EnvFilter::try_from_default_env().unwrap_or_else(|_| EnvFilter::new(default_level));
 
     tracing_subscriber::fmt()
         .with_env_filter(filter)

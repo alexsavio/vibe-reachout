@@ -7,6 +7,10 @@ and this project adheres to [Calendar Versioning](https://calver.org/) (YYYY.MM.
 
 ## [Unreleased]
 
+### 🐛 Bug Fixes
+
+- *(config)* Use ~/.config/ path instead of platform-specific config dir (#2)
+
 ### 💼 Other
 
 - Initial commit from Specify template
@@ -55,6 +59,10 @@ Includes full spec, design artifacts, and implementation:
 - Switch version scheme to CalVer (YYYY.MM.PATCH)
 - Add emoji prefixes to cliff.toml commit groups (matching cor-cli)
 - Generate initial CHANGELOG.md via git-cliff
+
+### 🧪 Testing
+
+- Add more tests
 
 ### ⚙️ Miscellaneous Tasks
 

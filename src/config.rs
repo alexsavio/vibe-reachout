@@ -67,9 +67,9 @@ impl Config {
 }
 
 fn config_file_path() -> anyhow::Result<PathBuf> {
-    let config_dir = dirs::config_dir()
-        .ok_or_else(|| BotError::ConfigInvalid("Cannot determine config directory".to_string()))?;
-    Ok(config_dir.join("vibe-reachout").join("config.toml"))
+    let home = dirs::home_dir()
+        .ok_or_else(|| BotError::ConfigInvalid("Cannot determine home directory".to_string()))?;
+    Ok(home.join(".config").join("vibe-reachout").join("config.toml"))
 }
 
 pub fn default_socket_path() -> PathBuf {

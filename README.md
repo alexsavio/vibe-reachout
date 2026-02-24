@@ -1,7 +1,6 @@
 # vibe-reachout
 
 [![CI](https://github.com/alexsavio/vibe-reachout/actions/workflows/ci.yml/badge.svg)](https://github.com/alexsavio/vibe-reachout/actions/workflows/ci.yml)
-[![codecov](https://codecov.io/gh/alexsavio/vibe-reachout/graph/badge.svg)](https://codecov.io/gh/alexsavio/vibe-reachout)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
 Approve Claude Code permission prompts from your phone via Telegram -- so you can walk away from the terminal and let it keep coding.

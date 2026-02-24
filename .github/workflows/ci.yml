@@ -85,10 +85,4 @@ jobs:
         run: cargo install cargo-tarpaulin
 
       - name: Generate coverage
-        run: cargo tarpaulin --out xml --fail-under 50 --exclude-files src/main.rs
-
-      - name: Upload coverage to Codecov
-        uses: codecov/codecov-action@v4
-        with:
-          files: cobertura.xml
-          fail_ci_if_error: false
+        run: cargo tarpaulin --fail-under 50 --exclude-files src/main.rs

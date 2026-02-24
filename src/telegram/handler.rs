@@ -167,7 +167,7 @@ pub async fn handle_message(
         &bot,
         &pending.sent_messages,
         &pending.original_text,
-        "\u{1f4ac} Replied",
+        "\u{270f}\u{fe0f} Amended",
     )
     .await;
 

@@ -328,6 +328,7 @@ mod tests {
             cwd: "/tmp".to_string(),
             session_id: "test-session".to_string(),
             permission_suggestions: vec![],
+            assistant_context: None,
         };
         let mut json = serde_json::to_string(&request).unwrap();
         json.push('\n');

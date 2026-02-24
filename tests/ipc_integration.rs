@@ -13,6 +13,7 @@ fn make_request() -> IpcRequest {
         cwd: "/home/user".to_string(),
         session_id: "test-session".to_string(),
         permission_suggestions: vec![],
+        assistant_context: None,
     }
 }
 

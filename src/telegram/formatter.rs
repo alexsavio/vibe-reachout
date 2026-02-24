@@ -18,8 +18,15 @@ pub fn format_permission_message(request: &IpcRequest) -> String {
 
     let tool_details = format_tool_details(&request.tool_name, &request.tool_input);
 
+    let context_section = request
+        .assistant_context
+        .as_deref()
+        .map(|ctx| format!("\u{1f4ac} {ctx}\n\n"))
+        .unwrap_or_default();
+
     let message = format!(
-        "\u{1f4cb} {project_name}\n\n\u{1f527} {tool}\n{details}\n\n\u{1f4c1} {cwd}\n\u{1f194} Session: {session}",
+        "{context}\u{1f4cb} {project_name}\n\n\u{1f527} {tool}\n{details}\n\n\u{1f4c1} {cwd}\n\u{1f194} Session: {session}",
+        context = context_section,
         tool = request.tool_name,
         details = tool_details,
         cwd = request.cwd,
@@ -113,6 +120,7 @@ mod tests {
             cwd: "/home/user/my-project".to_string(),
             session_id: "abcdef1234567890".to_string(),
             permission_suggestions: vec![],
+            assistant_context: None,
         }
     }
 
@@ -239,5 +247,25 @@ mod tests {
         assert!(result.ends_with("... (truncated)"));
         // Should not panic and should be valid UTF-8
         assert!(result.is_char_boundary(0));
+    }
+
+    #[test]
+    fn format_with_assistant_context() {
+        let mut req = make_request("Bash", serde_json::json!({"command": "cargo test"}));
+        req.assistant_context = Some("I will run the tests now.".to_string());
+        let msg = format_permission_message(&req);
+        // Context should appear before the project name
+        assert!(msg.contains("\u{1f4ac} I will run the tests now."));
+        let context_pos = msg.find("\u{1f4ac}").unwrap();
+        let project_pos = msg.find("\u{1f4cb}").unwrap();
+        assert!(context_pos < project_pos);
+    }
+
+    #[test]
+    fn format_without_assistant_context() {
+        let req = make_request("Bash", serde_json::json!({"command": "cargo test"}));
+        let msg = format_permission_message(&req);
+        // No context emoji when assistant_context is None
+        assert!(!msg.contains("\u{1f4ac}"));
     }
 }

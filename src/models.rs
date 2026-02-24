@@ -8,8 +8,6 @@ use uuid::Uuid;
 #[derive(Debug, Deserialize)]
 pub struct HookInput {
     pub session_id: String,
-    /// Deserialized for protocol completeness; not read after parsing.
-    #[allow(dead_code)]
     pub transcript_path: String,
     pub cwd: String,
     /// Deserialized for protocol completeness; not read after parsing.
@@ -116,6 +114,9 @@ pub struct IpcRequest {
     pub session_id: String,
     #[serde(default)]
     pub permission_suggestions: Vec<serde_json::Value>,
+    /// Claude's last assistant message, extracted from the transcript for context.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub assistant_context: Option<String>,
 }
 
 /// Decision sent from bot to hook over Unix socket (NDJSON).
@@ -329,6 +330,7 @@ mod tests {
             cwd: "/home/user".to_string(),
             session_id: "session-123".to_string(),
             permission_suggestions: vec![],
+            assistant_context: None,
         };
 
         let json = serde_json::to_string(&request).unwrap();

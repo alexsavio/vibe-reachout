@@ -223,6 +223,8 @@ echo '{"session_id":"abc","tool_name":"Bash",...}' | RUST_LOG=debug vibe-reachou
 When Claude Code triggers a permission prompt, you receive a Telegram message like this:
 
 ```text
+💬 I'll run the test suite to verify everything passes.
+
 📋 my-project
 
 🔧 Bash
@@ -231,6 +233,8 @@ When Claude Code triggers a permission prompt, you receive a Telegram message li
 📁 /home/user/projects/my-project
 🆔 Session: a1b2c3d4
 ```
+
+The first line shows Claude's last assistant message (truncated to ~500 chars), giving you context for **why** it wants to run the tool.
 
 With inline buttons:
 
@@ -246,10 +250,10 @@ The "Always Allow" button only appears when Claude Code provides permission sugg
 |--------|--------|
 | ✅ Allow | Approves the tool call. Claude Code proceeds. |
 | ❌ Deny | Blocks the tool call. Claude Code sees the denial and adjusts. |
-| 💬 Reply | Prompts you for free-text input. Your message is sent back to Claude Code as context. |
+| 💬 Reply | Prompts you for free-text input. Your message is sent back as an amendment — Claude adjusts its approach based on your guidance instead of treating it as a denial. |
 | 🔓 Always Allow | Approves and adds a permission rule so this tool type is auto-approved for the session. |
 
-After you respond, the message is edited to show the final status (e.g., "Approved", "Denied", "Replied", "Timed out") and the buttons are disabled. All messages across all authorized chats are updated, not just the one you tapped.
+After you respond, the message is edited to show the final status (e.g., "Approved", "Denied", "Amended", "Timed out") and the buttons are disabled. All messages across all authorized chats are updated, not just the one you tapped.
 
 ### Tool-specific formatting
 

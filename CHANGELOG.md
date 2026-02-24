@@ -10,10 +10,12 @@ and this project adheres to [Calendar Versioning](https://calver.org/) (YYYY.MM.
 ### 🚀 Features
 
 - *(telegram)* Show Claude's context in permission messages and reframe Reply as amendment
+- *(telegram)* Use HTML parse_mode for rich message formatting
 
 ### ⚙️ Miscellaneous Tasks
 
 - *(release)* Don't fail workflow if crate version already published
+- *(justfile)* Add run recipe for bot mode
 ## [2026.2.1] - 2026-02-24
 
 ### 🐛 Bug Fixes

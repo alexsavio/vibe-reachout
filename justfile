@@ -1,6 +1,10 @@
 # vibe-reachout — Telegram permission hook for Claude Code
 # https://github.com/alexsavio/vibe-reachout
 
+# Run the bot
+run:
+    cargo run -- bot
+
 # Build the project
 build:
     cargo build

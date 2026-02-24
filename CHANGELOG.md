@@ -16,6 +16,10 @@ and this project adheres to [Calendar Versioning](https://calver.org/) (YYYY.MM.
 
 - *(telegram)* Move project name to top of permission messages
 
+### 🎨 Styling
+
+- Fixes
+
 ### ⚙️ Miscellaneous Tasks
 
 - *(release)* Don't fail workflow if crate version already published

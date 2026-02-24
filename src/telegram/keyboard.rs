@@ -3,6 +3,11 @@ use uuid::Uuid;
 
 pub fn make_keyboard(request_id: Uuid, has_permission_suggestions: bool) -> InlineKeyboardMarkup {
     let id = request_id.to_string();
+    // Telegram limits callback_data to 64 bytes. UUID (36) + ":" (1) + "always" (6) = 43.
+    debug_assert!(
+        id.len() + ":always".len() <= 64,
+        "callback data exceeds Telegram 64-byte limit"
+    );
 
     let mut buttons = vec![
         InlineKeyboardButton::callback("\u{2705} Allow", format!("{id}:allow")),

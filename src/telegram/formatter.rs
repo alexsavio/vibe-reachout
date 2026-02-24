@@ -26,7 +26,7 @@ pub fn format_permission_message(request: &IpcRequest) -> String {
         session = session_short,
     );
 
-    truncate_message(&message, MAX_TOTAL_CHARS)
+    truncate(&message, MAX_TOTAL_CHARS)
 }
 
 fn format_tool_details(tool_name: &str, tool_input: &serde_json::Value) -> String {
@@ -36,7 +36,7 @@ fn format_tool_details(tool_name: &str, tool_input: &serde_json::Value) -> Strin
                 .get("command")
                 .and_then(|v| v.as_str())
                 .unwrap_or("<no command>");
-            let truncated = truncate_field(command, MAX_FIELD_CHARS);
+            let truncated = truncate(command, MAX_FIELD_CHARS);
             format!("```\n{truncated}\n```")
         }
         "Write" => {
@@ -64,29 +64,20 @@ fn format_tool_details(tool_name: &str, tool_input: &serde_json::Value) -> Strin
                 .get("new_string")
                 .and_then(|v| v.as_str())
                 .unwrap_or("");
-            let old_truncated = truncate_field(old, MAX_FIELD_CHARS / 2);
-            let new_truncated = truncate_field(new, MAX_FIELD_CHARS / 2);
+            let old_truncated = truncate(old, MAX_FIELD_CHARS / 2);
+            let new_truncated = truncate(new, MAX_FIELD_CHARS / 2);
             format!("\u{1f4c4} {file_path}\n- {old_truncated}\n+ {new_truncated}")
         }
         _ => {
             // Generic: show JSON excerpt
             let json_str = serde_json::to_string_pretty(tool_input).unwrap_or_default();
-            let truncated = truncate_field(&json_str, MAX_FIELD_CHARS);
+            let truncated = truncate(&json_str, MAX_FIELD_CHARS);
             format!("```json\n{truncated}\n```")
         }
     }
 }
 
-fn truncate_field(s: &str, max: usize) -> String {
-    if s.len() <= max {
-        s.to_string()
-    } else {
-        let boundary = s.floor_char_boundary(max);
-        format!("{}... (truncated)", &s[..boundary])
-    }
-}
-
-fn truncate_message(s: &str, max: usize) -> String {
+fn truncate(s: &str, max: usize) -> String {
     if s.len() <= max {
         s.to_string()
     } else {
@@ -222,10 +213,10 @@ mod tests {
     }
 
     #[test]
-    fn truncate_field_on_multibyte_utf8() {
+    fn truncate_on_multibyte_utf8() {
         // Emoji (4 bytes each): cutting at byte 5 would land inside the second emoji
         let input = "\u{1f600}\u{1f601}\u{1f602}\u{1f603}"; // 4 emoji = 16 bytes
-        let result = truncate_field(input, 5);
+        let result = truncate(input, 5);
         // Should truncate at char boundary (after first emoji, byte 4)
         assert!(result.starts_with("\u{1f600}"));
         assert!(result.ends_with("... (truncated)"));
@@ -234,15 +225,15 @@ mod tests {
 
         // CJK characters (3 bytes each): cutting at byte 4 lands inside second char
         let cjk = "\u{4e16}\u{754c}\u{4f60}\u{597d}"; // 4 CJK = 12 bytes
-        let result = truncate_field(cjk, 4);
+        let result = truncate(cjk, 4);
         assert!(result.starts_with("\u{4e16}"));
         assert!(result.ends_with("... (truncated)"));
     }
 
     #[test]
-    fn truncate_message_on_multibyte_utf8() {
+    fn truncate_long_message_on_multibyte_utf8() {
         let input = "Hello \u{1f30d}\u{1f30d}\u{1f30d}".to_string() + &"x".repeat(4000);
-        let result = truncate_message(&input, 10);
+        let result = truncate(&input, 10);
         // Byte 10 lands inside the second emoji (6 ASCII + 4 bytes of first emoji = 10)
         // floor_char_boundary(10) = 10 (end of first emoji)
         assert!(result.ends_with("... (truncated)"));

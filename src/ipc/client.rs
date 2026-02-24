@@ -10,17 +10,15 @@ pub async fn send_request(
     request: &IpcRequest,
     timeout_secs: u64,
 ) -> Result<IpcResponse, HookError> {
-    if !socket_path.exists() {
-        return Err(HookError::SocketNotFound(socket_path.display().to_string()));
-    }
-
-    let stream = UnixStream::connect(socket_path).await.map_err(|e| {
-        if e.kind() == std::io::ErrorKind::ConnectionRefused {
-            HookError::ConnectionRefused
-        } else {
-            HookError::StdinRead(e)
-        }
-    })?;
+    let stream = UnixStream::connect(socket_path)
+        .await
+        .map_err(|e| match e.kind() {
+            std::io::ErrorKind::NotFound => {
+                HookError::SocketNotFound(socket_path.display().to_string())
+            }
+            std::io::ErrorKind::ConnectionRefused => HookError::ConnectionRefused,
+            _ => HookError::ConnectionFailed(e),
+        })?;
 
     let (reader, mut writer) = stream.into_split();
 
@@ -28,8 +26,14 @@ pub async fn send_request(
     let mut json = serde_json::to_string(request)
         .map_err(|e| HookError::InvalidResponse(format!("Failed to serialize request: {e}")))?;
     json.push('\n');
-    writer.write_all(json.as_bytes()).await?;
-    writer.shutdown().await?;
+    writer
+        .write_all(json.as_bytes())
+        .await
+        .map_err(HookError::ConnectionFailed)?;
+    writer
+        .shutdown()
+        .await
+        .map_err(HookError::ConnectionFailed)?;
 
     // Read NDJSON response with timeout
     let mut buf_reader = BufReader::new(reader);
@@ -42,7 +46,7 @@ pub async fn send_request(
     .await
     .map_err(|_| HookError::Timeout(timeout_secs))?;
 
-    read_result?;
+    read_result.map_err(HookError::ConnectionFailed)?;
 
     if line.trim().is_empty() {
         return Err(HookError::InvalidResponse(

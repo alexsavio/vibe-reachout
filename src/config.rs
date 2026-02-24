@@ -1,14 +1,36 @@
 use crate::error::BotError;
 use serde::Deserialize;
+use std::collections::HashSet;
 use std::path::PathBuf;
 
 #[derive(Debug, Deserialize, Clone)]
+#[serde(from = "RawConfig")]
 pub struct Config {
     pub telegram_bot_token: String,
-    pub allowed_chat_ids: Vec<i64>,
-    #[serde(default = "default_timeout")]
+    pub allowed_chat_ids: HashSet<i64>,
     pub timeout_seconds: u64,
     pub socket_path: Option<PathBuf>,
+}
+
+/// Intermediate type for deserialization (Vec → `HashSet` conversion).
+#[derive(Deserialize)]
+struct RawConfig {
+    telegram_bot_token: String,
+    allowed_chat_ids: Vec<i64>,
+    #[serde(default = "default_timeout")]
+    timeout_seconds: u64,
+    socket_path: Option<PathBuf>,
+}
+
+impl From<RawConfig> for Config {
+    fn from(raw: RawConfig) -> Self {
+        Self {
+            telegram_bot_token: raw.telegram_bot_token,
+            allowed_chat_ids: raw.allowed_chat_ids.into_iter().collect(),
+            timeout_seconds: raw.timeout_seconds,
+            socket_path: raw.socket_path,
+        }
+    }
 }
 
 const fn default_timeout() -> u64 {
@@ -109,7 +131,7 @@ mod tests {
         );
         let config = Config::load_from_path(&path).unwrap();
         assert_eq!(config.telegram_bot_token, "123:ABC");
-        assert_eq!(config.allowed_chat_ids, vec![12345]);
+        assert_eq!(config.allowed_chat_ids, HashSet::from([12345]));
         assert_eq!(config.timeout_seconds, 120);
         assert!(config.socket_path.is_none());
     }
@@ -252,5 +274,40 @@ mod tests {
         let path_str = path.to_string_lossy();
         assert!(path_str.contains("vibe-reachout"));
         assert!(path_str.ends_with(".sock"));
+    }
+
+    #[test]
+    fn load_from_nonexistent_file_gives_config_error() {
+        let result = Config::load_from_path(std::path::Path::new("/nonexistent/path/config.toml"));
+        assert!(result.is_err());
+        assert!(
+            result
+                .unwrap_err()
+                .to_string()
+                .contains("Cannot read config")
+        );
+    }
+
+    #[test]
+    fn load_from_invalid_toml() {
+        let tmp = tempfile::tempdir().unwrap();
+        let path = write_config(tmp.path(), "{{{{invalid toml}}}}");
+        let result = Config::load_from_path(&path);
+        assert!(result.is_err());
+        assert!(result.unwrap_err().to_string().contains("Invalid TOML"));
+    }
+
+    #[test]
+    fn duplicate_chat_ids_are_deduplicated() {
+        let tmp = tempfile::tempdir().unwrap();
+        let path = write_config(
+            tmp.path(),
+            r#"
+            telegram_bot_token = "tok"
+            allowed_chat_ids = [1, 1, 2, 2, 3]
+            "#,
+        );
+        let config = Config::load_from_path(&path).unwrap();
+        assert_eq!(config.allowed_chat_ids.len(), 3);
     }
 }

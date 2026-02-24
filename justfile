@@ -36,6 +36,7 @@ lint-fix:
 # Format code
 format:
     cargo fmt
+    rumdl fmt *.md
 
 # Check formatting without modifying files
 format-check:

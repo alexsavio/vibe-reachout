@@ -10,7 +10,7 @@ Claude Code's autonomous "vibe coding" sessions are powerful: kick off a task, w
 
 ## How It Works
 
-```
+```text
                          +-----------------+
                          |   Claude Code   |
                          |   (terminal)    |
@@ -224,7 +224,7 @@ echo '{"session_id":"abc","tool_name":"Bash",...}' | RUST_LOG=debug vibe-reachou
 
 When Claude Code triggers a permission prompt, you receive a Telegram message like this:
 
-```
+```text
 📋 my-project
 
 🔧 Bash
@@ -236,7 +236,7 @@ When Claude Code triggers a permission prompt, you receive a Telegram message li
 
 With inline buttons:
 
-```
+```text
 [ ✅ Allow ]  [ ❌ Deny ]  [ 💬 Reply ]  [ 🔓 Always Allow ]
 ```
 
@@ -276,6 +276,7 @@ Long content is truncated to keep messages readable (500 chars per field, 4000 c
 ### "Bot already running" error
 
 Another instance of the bot is already bound to the socket. Either:
+
 - Kill the existing process
 - Remove the stale socket file manually (see socket path in config or default location)
 
@@ -295,6 +296,7 @@ RUST_LOG=debug vibe-reachout bot
 ```
 
 Common causes:
+
 - Bot process not running
 - Config file missing or invalid
 - Socket path mismatch between bot and hook (both read from the same config)
@@ -335,6 +337,7 @@ cargo build --release
 ```
 
 The release profile is configured for minimal binary size:
+
 - LTO (link-time optimization) enabled
 - Single codegen unit
 - Symbols stripped
@@ -357,7 +360,7 @@ cargo build --release --target aarch64-unknown-linux-gnu
 
 ### Project structure
 
-```
+```text
 src/
   main.rs          # CLI entry point (clap), dispatches to bot/install/hook
   config.rs        # Config loading and validation (~/.config/vibe-reachout/config.toml)

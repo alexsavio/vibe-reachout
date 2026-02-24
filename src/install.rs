@@ -19,12 +19,13 @@ pub fn install_hook(settings_path: &Path) -> anyhow::Result<()> {
         serde_json::json!({})
     };
 
-    // Ensure hooks object exists
-    if settings.get("hooks").is_none() {
-        settings["hooks"] = serde_json::json!({});
-    }
-
-    let hooks = settings["hooks"].as_object_mut().unwrap();
+    let hooks = settings
+        .as_object_mut()
+        .expect("settings must be a JSON object")
+        .entry("hooks")
+        .or_insert_with(|| serde_json::json!({}))
+        .as_object_mut()
+        .expect("hooks must be a JSON object");
 
     // The hook entry we want to install
     let hook_entry = serde_json::json!({
@@ -144,6 +145,27 @@ mod tests {
         let arr = settings["hooks"]["PermissionRequest"].as_array().unwrap();
         // Should still be exactly 1 entry, not duplicated
         assert_eq!(arr.len(), 1);
+    }
+
+    #[test]
+    fn install_adds_alongside_existing_permission_hooks() {
+        let tmp = tempfile::tempdir().unwrap();
+        let path = tmp.path().join("settings.json");
+
+        let existing = serde_json::json!({
+            "hooks": {
+                "PermissionRequest": [
+                    {"hooks": [{"type": "command", "command": "other-tool"}]}
+                ]
+            }
+        });
+        std::fs::write(&path, serde_json::to_string_pretty(&existing).unwrap()).unwrap();
+
+        install_hook(&path).unwrap();
+
+        let settings = read_settings(&path);
+        let arr = settings["hooks"]["PermissionRequest"].as_array().unwrap();
+        assert_eq!(arr.len(), 2); // original + vibe-reachout
     }
 
     #[test]

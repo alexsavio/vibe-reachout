@@ -275,4 +275,39 @@ mod tests {
         assert!(path_str.contains("vibe-reachout"));
         assert!(path_str.ends_with(".sock"));
     }
+
+    #[test]
+    fn load_from_nonexistent_file_gives_config_error() {
+        let result = Config::load_from_path(std::path::Path::new("/nonexistent/path/config.toml"));
+        assert!(result.is_err());
+        assert!(
+            result
+                .unwrap_err()
+                .to_string()
+                .contains("Cannot read config")
+        );
+    }
+
+    #[test]
+    fn load_from_invalid_toml() {
+        let tmp = tempfile::tempdir().unwrap();
+        let path = write_config(tmp.path(), "{{{{invalid toml}}}}");
+        let result = Config::load_from_path(&path);
+        assert!(result.is_err());
+        assert!(result.unwrap_err().to_string().contains("Invalid TOML"));
+    }
+
+    #[test]
+    fn duplicate_chat_ids_are_deduplicated() {
+        let tmp = tempfile::tempdir().unwrap();
+        let path = write_config(
+            tmp.path(),
+            r#"
+            telegram_bot_token = "tok"
+            allowed_chat_ids = [1, 1, 2, 2, 3]
+            "#,
+        );
+        let config = Config::load_from_path(&path).unwrap();
+        assert_eq!(config.allowed_chat_ids.len(), 3);
+    }
 }

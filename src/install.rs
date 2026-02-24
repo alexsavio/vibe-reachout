@@ -148,6 +148,27 @@ mod tests {
     }
 
     #[test]
+    fn install_adds_alongside_existing_permission_hooks() {
+        let tmp = tempfile::tempdir().unwrap();
+        let path = tmp.path().join("settings.json");
+
+        let existing = serde_json::json!({
+            "hooks": {
+                "PermissionRequest": [
+                    {"hooks": [{"type": "command", "command": "other-tool"}]}
+                ]
+            }
+        });
+        std::fs::write(&path, serde_json::to_string_pretty(&existing).unwrap()).unwrap();
+
+        install_hook(&path).unwrap();
+
+        let settings = read_settings(&path);
+        let arr = settings["hooks"]["PermissionRequest"].as_array().unwrap();
+        assert_eq!(arr.len(), 2); // original + vibe-reachout
+    }
+
+    #[test]
     fn install_creates_parent_directories() {
         let tmp = tempfile::tempdir().unwrap();
         let path = tmp.path().join("sub").join("dir").join("settings.json");

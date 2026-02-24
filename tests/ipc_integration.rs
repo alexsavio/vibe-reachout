@@ -82,6 +82,55 @@ async fn client_returns_error_when_socket_missing() {
 }
 
 #[tokio::test]
+async fn client_returns_error_on_empty_response() {
+    let tmp = tempfile::tempdir().unwrap();
+    let socket_path = tmp.path().join("empty-resp.sock");
+
+    let listener = UnixListener::bind(&socket_path).unwrap();
+    let _server = tokio::spawn(async move {
+        let (stream, _) = listener.accept().await.unwrap();
+        let (reader, mut writer) = stream.into_split();
+
+        // Read the request
+        let mut buf_reader = BufReader::new(reader);
+        let mut line = String::new();
+        buf_reader.read_line(&mut line).await.unwrap();
+
+        // Send empty response
+        writer.write_all(b"\n").await.unwrap();
+    });
+
+    let request = make_request();
+    let result = send_request(&socket_path, &request, 5).await;
+
+    assert!(result.is_err());
+    let err_msg = result.unwrap_err().to_string();
+    assert!(err_msg.contains("Empty response"));
+}
+
+#[tokio::test]
+async fn client_returns_error_on_connection_refused() {
+    let tmp = tempfile::tempdir().unwrap();
+    let socket_path = tmp.path().join("refused.sock");
+
+    // Create a stale socket: bind a listener then drop it
+    {
+        let _listener = std::os::unix::net::UnixListener::bind(&socket_path).unwrap();
+    }
+
+    assert!(socket_path.exists());
+    let request = make_request();
+    let result = send_request(&socket_path, &request, 5).await;
+
+    assert!(result.is_err());
+    let err_msg = result.unwrap_err().to_string();
+    assert!(
+        err_msg.contains("refused") || err_msg.contains("Connection"),
+        "unexpected error: {err_msg}"
+    );
+}
+
+#[tokio::test]
 async fn client_times_out_when_server_does_not_respond() {
     let tmp = tempfile::tempdir().unwrap();
     let socket_path = tmp.path().join("timeout.sock");

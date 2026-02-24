@@ -210,4 +210,136 @@ mod tests {
         let err = result.unwrap_err();
         assert!(matches!(err, BotError::AlreadyRunning(_)));
     }
+
+    fn make_test_config() -> Config {
+        Config {
+            telegram_bot_token: "fake-token".to_string(),
+            allowed_chat_ids: std::collections::HashSet::from([12345]),
+            timeout_seconds: 5,
+            socket_path: None,
+        }
+    }
+
+    #[tokio::test]
+    async fn run_server_stops_on_cancel() {
+        let tmp = tempfile::tempdir().unwrap();
+        let sock = tmp.path().join("test.sock");
+        let cancel = CancellationToken::new();
+        let bot = Bot::new("fake-token");
+        let config = Arc::new(make_test_config());
+        let pending: PendingMap = Arc::new(DashMap::new());
+
+        let cancel2 = cancel.clone();
+        let sock2 = sock.clone();
+        let handle =
+            tokio::spawn(async move { run_server(&sock2, cancel2, bot, config, pending).await });
+
+        tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+        assert!(sock.exists());
+
+        cancel.cancel();
+        let result = handle.await.unwrap();
+        assert!(result.is_ok());
+        assert!(!sock.exists()); // Socket cleaned up
+    }
+
+    #[tokio::test]
+    async fn server_handles_empty_request() {
+        use tokio::io::AsyncWriteExt;
+
+        let tmp = tempfile::tempdir().unwrap();
+        let sock = tmp.path().join("empty.sock");
+        let cancel = CancellationToken::new();
+        let bot = Bot::new("fake-token");
+        let config = Arc::new(make_test_config());
+        let pending: PendingMap = Arc::new(DashMap::new());
+
+        let cancel2 = cancel.clone();
+        let sock2 = sock.clone();
+        let handle =
+            tokio::spawn(async move { run_server(&sock2, cancel2, bot, config, pending).await });
+
+        tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+
+        // Connect and send empty line
+        let mut stream = tokio::net::UnixStream::connect(&sock).await.unwrap();
+        stream.write_all(b"\n").await.unwrap();
+        drop(stream);
+
+        // Give server time to process
+        tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+
+        cancel.cancel();
+        handle.await.unwrap().unwrap();
+    }
+
+    #[tokio::test]
+    async fn server_handles_invalid_json() {
+        use tokio::io::AsyncWriteExt;
+
+        let tmp = tempfile::tempdir().unwrap();
+        let sock = tmp.path().join("invalid.sock");
+        let cancel = CancellationToken::new();
+        let bot = Bot::new("fake-token");
+        let config = Arc::new(make_test_config());
+        let pending: PendingMap = Arc::new(DashMap::new());
+
+        let cancel2 = cancel.clone();
+        let sock2 = sock.clone();
+        let handle =
+            tokio::spawn(async move { run_server(&sock2, cancel2, bot, config, pending).await });
+
+        tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+
+        // Connect and send invalid JSON
+        let mut stream = tokio::net::UnixStream::connect(&sock).await.unwrap();
+        stream.write_all(b"not valid json\n").await.unwrap();
+        drop(stream);
+
+        tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+
+        cancel.cancel();
+        handle.await.unwrap().unwrap();
+    }
+
+    #[tokio::test]
+    async fn server_handles_valid_request_with_fake_bot() {
+        use tokio::io::AsyncWriteExt;
+
+        let tmp = tempfile::tempdir().unwrap();
+        let sock = tmp.path().join("valid.sock");
+        let cancel = CancellationToken::new();
+        let bot = Bot::new("fake-token");
+        let config = Arc::new(make_test_config());
+        let pending: PendingMap = Arc::new(DashMap::new());
+
+        let cancel2 = cancel.clone();
+        let sock2 = sock.clone();
+        let handle =
+            tokio::spawn(async move { run_server(&sock2, cancel2, bot, config, pending).await });
+
+        tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+
+        // Connect and send a valid IPC request (will fail at Telegram API call)
+        let request = crate::models::IpcRequest {
+            request_id: Uuid::new_v4(),
+            tool_name: "Bash".to_string(),
+            tool_input: serde_json::json!({"command": "echo hello"}),
+            cwd: "/tmp".to_string(),
+            session_id: "test-session".to_string(),
+            permission_suggestions: vec![],
+        };
+        let mut json = serde_json::to_string(&request).unwrap();
+        json.push('\n');
+
+        let mut stream = tokio::net::UnixStream::connect(&sock).await.unwrap();
+        stream.write_all(json.as_bytes()).await.unwrap();
+        drop(stream);
+
+        // Give server time to process (Telegram API call will fail quickly)
+        tokio::time::sleep(std::time::Duration::from_secs(2)).await;
+
+        cancel.cancel();
+        handle.await.unwrap().unwrap();
+    }
 }

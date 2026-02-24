@@ -194,3 +194,51 @@ pub async fn edit_messages_status(
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::models::{Decision, PendingRequest};
+    use tokio::sync::oneshot;
+    use tokio::time::Instant;
+    use uuid::Uuid;
+
+    #[test]
+    fn drain_empty_map_does_nothing() {
+        let map: PendingMap = Arc::new(DashMap::new());
+        drain_pending_requests(&map);
+        assert!(map.is_empty());
+    }
+
+    #[test]
+    fn drain_resolves_all_as_timeout() {
+        let map: PendingMap = Arc::new(DashMap::new());
+        let mut receivers = Vec::new();
+
+        for _ in 0..3 {
+            let id = Uuid::new_v4();
+            let (tx, rx) = oneshot::channel();
+            map.insert(
+                id,
+                PendingRequest {
+                    request_id: id,
+                    sender: tx,
+                    sent_messages: vec![],
+                    original_text: String::new(),
+                    permission_suggestions: vec![],
+                    created_at: Instant::now(),
+                },
+            );
+            receivers.push((id, rx));
+        }
+
+        drain_pending_requests(&map);
+        assert!(map.is_empty());
+
+        for (id, mut rx) in receivers {
+            let resp = rx.try_recv().unwrap();
+            assert_eq!(resp.decision, Decision::Timeout);
+            assert_eq!(resp.request_id, id);
+        }
+    }
+}

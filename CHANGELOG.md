@@ -68,6 +68,7 @@ Includes full spec, design artifacts, and implementation:
 ### 📚 Documentation
 
 - *(readme)* Add CI, coverage, and license badges
+- *(readme)* Add crates.io badge and cargo install instructions
 
 ### 🧪 Testing
 

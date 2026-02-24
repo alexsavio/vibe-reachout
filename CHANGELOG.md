@@ -7,6 +7,10 @@ and this project adheres to [Calendar Versioning](https://calver.org/) (YYYY.MM.
 
 ## [Unreleased]
 
+### 🚀 Features
+
+- *(telegram)* Show Claude's context in permission messages and reframe Reply as amendment
+
 ### ⚙️ Miscellaneous Tasks
 
 - *(release)* Don't fail workflow if crate version already published

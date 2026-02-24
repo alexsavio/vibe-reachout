@@ -289,14 +289,20 @@ mod tests {
     #[test]
     fn escape_html_special_chars() {
         assert_eq!(escape_html("a < b & c > d"), "a &lt; b &amp; c &gt; d");
-        assert_eq!(escape_html("<script>alert('xss')</script>"), "&lt;script&gt;alert('xss')&lt;/script&gt;");
+        assert_eq!(
+            escape_html("<script>alert('xss')</script>"),
+            "&lt;script&gt;alert('xss')&lt;/script&gt;"
+        );
         assert_eq!(escape_html("no special chars"), "no special chars");
         assert_eq!(escape_html(""), "");
     }
 
     #[test]
     fn html_special_chars_in_command_are_escaped() {
-        let req = make_request("Bash", serde_json::json!({"command": "echo '<hello>' && true"}));
+        let req = make_request(
+            "Bash",
+            serde_json::json!({"command": "echo '<hello>' && true"}),
+        );
         let msg = format_permission_message(&req);
         assert!(msg.contains("&lt;hello&gt;"));
         assert!(msg.contains("&amp;&amp;"));

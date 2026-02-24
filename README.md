@@ -1,6 +1,7 @@
 # vibe-reachout
 
 [![CI](https://github.com/alexsavio/vibe-reachout/actions/workflows/ci.yml/badge.svg)](https://github.com/alexsavio/vibe-reachout/actions/workflows/ci.yml)
+[![crates.io](https://img.shields.io/crates/v/vibe-reachout.svg)](https://crates.io/crates/vibe-reachout)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
 Approve Claude Code permission prompts from your phone via Telegram -- so you can walk away from the terminal and let it keep coding.
@@ -88,23 +89,17 @@ Communication between the two processes uses newline-delimited JSON (NDJSON) ove
 
 ## Installation
 
+### From crates.io
+
+```bash
+cargo install vibe-reachout
+```
+
 ### Build from source
 
 ```bash
 git clone https://github.com/alexsavio/vibe-reachout.git
 cd vibe-reachout
-cargo build --release
-```
-
-The binary is at `target/release/vibe-reachout`. Copy it somewhere on your `PATH`:
-
-```bash
-cp target/release/vibe-reachout ~/.local/bin/
-```
-
-Or install directly with Cargo:
-
-```bash
 cargo install --path .
 ```
 

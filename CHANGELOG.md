@@ -10,6 +10,7 @@ and this project adheres to [Calendar Versioning](https://calver.org/) (YYYY.MM.
 ### 🐛 Bug Fixes
 
 - *(config)* Use ~/.config/ path instead of platform-specific config dir (#2)
+- *(ci)* Add checks:write permission for security audit job
 
 ### 💼 Other
 

@@ -1,5 +1,9 @@
 # vibe-reachout
 
+[![CI](https://github.com/alexsavio/vibe-reachout/actions/workflows/ci.yml/badge.svg)](https://github.com/alexsavio/vibe-reachout/actions/workflows/ci.yml)
+[![codecov](https://codecov.io/gh/alexsavio/vibe-reachout/graph/badge.svg)](https://codecov.io/gh/alexsavio/vibe-reachout)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
+
 Approve Claude Code permission prompts from your phone via Telegram -- so you can walk away from the terminal and let it keep coding.
 
 ## The Problem
@@ -341,7 +345,7 @@ The release profile is configured for minimal binary size:
 - LTO (link-time optimization) enabled
 - Single codegen unit
 - Symbols stripped
-- Optimized for size (`opt-level = "z"`)
+- Optimized for speed (`opt-level = 2`)
 
 ### Cross-compilation targets
 
@@ -377,6 +381,7 @@ src/
     mod.rs         # Telegram module
     formatter.rs   # Tool-specific message formatting
     keyboard.rs    # Inline keyboard button generation
+    callback_data.rs # Typed callback data parsing
     handler.rs     # Callback query and message handling
 ```
 

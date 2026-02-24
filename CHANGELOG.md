@@ -12,6 +12,10 @@ and this project adheres to [Calendar Versioning](https://calver.org/) (YYYY.MM.
 - *(telegram)* Show Claude's context in permission messages and reframe Reply as amendment
 - *(telegram)* Use HTML parse_mode for rich message formatting
 
+### 🐛 Bug Fixes
+
+- *(telegram)* Move project name to top of permission messages
+
 ### ⚙️ Miscellaneous Tasks
 
 - *(release)* Don't fail workflow if crate version already published

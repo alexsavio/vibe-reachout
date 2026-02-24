@@ -24,6 +24,7 @@ and this project adheres to [Calendar Versioning](https://calver.org/) (YYYY.MM.
 
 - *(release)* Don't fail workflow if crate version already published
 - *(justfile)* Add run recipe for bot mode
+- Release v2026.2.2
 ## [2026.2.1] - 2026-02-24
 
 ### 🐛 Bug Fixes

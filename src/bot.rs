@@ -152,6 +152,7 @@ pub async fn send_permission_to_telegram(
         let chat = ChatId(chat_id);
         match bot
             .send_message(chat, &text)
+            .parse_mode(teloxide::types::ParseMode::Html)
             .reply_markup(keyboard.clone())
             .await
         {
@@ -184,6 +185,7 @@ pub async fn edit_messages_status(
     for msg in sent_messages {
         if let Err(e) = bot
             .edit_message_text(msg.chat_id, msg.message_id, &new_text)
+            .parse_mode(teloxide::types::ParseMode::Html)
             .await
         {
             tracing::warn!(

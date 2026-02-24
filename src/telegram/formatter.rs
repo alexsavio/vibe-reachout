@@ -21,16 +21,17 @@ pub fn format_permission_message(request: &IpcRequest) -> String {
     let context_section = request
         .assistant_context
         .as_deref()
-        .map(|ctx| format!("\u{1f4ac} {ctx}\n\n"))
+        .map(|ctx| format!("\u{1f4ac} {}\n\n", escape_html(ctx)))
         .unwrap_or_default();
 
     let message = format!(
-        "{context}\u{1f4cb} {project_name}\n\n\u{1f527} {tool}\n{details}\n\n\u{1f4c1} {cwd}\n\u{1f194} Session: {session}",
+        "{context}<b>\u{1f4cb} {project_name}</b>\n\n<b>\u{1f527} {tool}</b>\n{details}\n\n\u{1f4c1} {cwd}\n\u{1f194} Session: <code>{session}</code>",
         context = context_section,
-        tool = request.tool_name,
+        project_name = escape_html(project_name),
+        tool = escape_html(&request.tool_name),
         details = tool_details,
-        cwd = request.cwd,
-        session = session_short,
+        cwd = escape_html(&request.cwd),
+        session = escape_html(session_short),
     );
 
     truncate(&message, MAX_TOTAL_CHARS)
@@ -44,7 +45,7 @@ fn format_tool_details(tool_name: &str, tool_input: &serde_json::Value) -> Strin
                 .and_then(|v| v.as_str())
                 .unwrap_or("<no command>");
             let truncated = truncate(command, MAX_FIELD_CHARS);
-            format!("```\n{truncated}\n```")
+            format!("<pre>{}</pre>", escape_html(&truncated))
         }
         "Write" => {
             let file_path = tool_input
@@ -56,7 +57,11 @@ fn format_tool_details(tool_name: &str, tool_input: &serde_json::Value) -> Strin
                 .and_then(|v| v.as_str())
                 .map_or(0, str::len);
             let size = format_size(content_len);
-            format!("\u{1f4c4} {file_path} ({size})")
+            format!(
+                "\u{1f4c4} <code>{}</code> ({})",
+                escape_html(file_path),
+                escape_html(&size)
+            )
         }
         "Edit" => {
             let file_path = tool_input
@@ -73,15 +78,26 @@ fn format_tool_details(tool_name: &str, tool_input: &serde_json::Value) -> Strin
                 .unwrap_or("");
             let old_truncated = truncate(old, MAX_FIELD_CHARS / 2);
             let new_truncated = truncate(new, MAX_FIELD_CHARS / 2);
-            format!("\u{1f4c4} {file_path}\n- {old_truncated}\n+ {new_truncated}")
+            format!(
+                "\u{1f4c4} <code>{}</code>\n<pre>- {}\n+ {}</pre>",
+                escape_html(file_path),
+                escape_html(&old_truncated),
+                escape_html(&new_truncated),
+            )
         }
         _ => {
             // Generic: show JSON excerpt
             let json_str = serde_json::to_string_pretty(tool_input).unwrap_or_default();
             let truncated = truncate(&json_str, MAX_FIELD_CHARS);
-            format!("```json\n{truncated}\n```")
+            format!("<pre>{}</pre>", escape_html(&truncated))
         }
     }
+}
+
+fn escape_html(s: &str) -> String {
+    s.replace('&', "&amp;")
+        .replace('<', "&lt;")
+        .replace('>', "&gt;")
 }
 
 fn truncate(s: &str, max: usize) -> String {
@@ -128,8 +144,8 @@ mod tests {
     fn format_bash_tool() {
         let req = make_request("Bash", serde_json::json!({"command": "ls -la"}));
         let msg = format_permission_message(&req);
-        assert!(msg.contains("Bash"));
-        assert!(msg.contains("ls -la"));
+        assert!(msg.contains("<b>\u{1f527} Bash</b>"));
+        assert!(msg.contains("<pre>ls -la</pre>"));
         assert!(msg.contains("my-project"));
     }
 
@@ -141,8 +157,8 @@ mod tests {
             serde_json::json!({"file_path": "/tmp/test.rs", "content": content}),
         );
         let msg = format_permission_message(&req);
-        assert!(msg.contains("Write"));
-        assert!(msg.contains("/tmp/test.rs"));
+        assert!(msg.contains("<b>\u{1f527} Write</b>"));
+        assert!(msg.contains("<code>/tmp/test.rs</code>"));
         assert!(msg.contains("100 B"));
     }
 
@@ -157,17 +173,19 @@ mod tests {
             }),
         );
         let msg = format_permission_message(&req);
-        assert!(msg.contains("Edit"));
-        assert!(msg.contains("/tmp/test.rs"));
-        assert!(msg.contains("fn old()"));
-        assert!(msg.contains("fn new()"));
+        assert!(msg.contains("<b>\u{1f527} Edit</b>"));
+        assert!(msg.contains("<code>/tmp/test.rs</code>"));
+        assert!(msg.contains("- fn old()"));
+        assert!(msg.contains("+ fn new()"));
+        assert!(msg.contains("<pre>"));
     }
 
     #[test]
     fn format_unknown_tool_shows_json() {
         let req = make_request("CustomTool", serde_json::json!({"key": "value"}));
         let msg = format_permission_message(&req);
-        assert!(msg.contains("CustomTool"));
+        assert!(msg.contains("<b>\u{1f527} CustomTool</b>"));
+        assert!(msg.contains("<pre>"));
         assert!(msg.contains("key"));
         assert!(msg.contains("value"));
     }
@@ -215,7 +233,7 @@ mod tests {
     fn session_id_truncated_to_8_chars() {
         let req = make_request("Bash", serde_json::json!({"command": "ls"}));
         let msg = format_permission_message(&req);
-        assert!(msg.contains("abcdef12"));
+        assert!(msg.contains("<code>abcdef12</code>"));
         // Should not contain full session ID
         assert!(!msg.contains("abcdef1234567890"));
     }
@@ -254,7 +272,6 @@ mod tests {
         let mut req = make_request("Bash", serde_json::json!({"command": "cargo test"}));
         req.assistant_context = Some("I will run the tests now.".to_string());
         let msg = format_permission_message(&req);
-        // Context should appear before the project name
         assert!(msg.contains("\u{1f4ac} I will run the tests now."));
         let context_pos = msg.find("\u{1f4ac}").unwrap();
         let project_pos = msg.find("\u{1f4cb}").unwrap();
@@ -265,7 +282,49 @@ mod tests {
     fn format_without_assistant_context() {
         let req = make_request("Bash", serde_json::json!({"command": "cargo test"}));
         let msg = format_permission_message(&req);
-        // No context emoji when assistant_context is None
         assert!(!msg.contains("\u{1f4ac}"));
+    }
+
+    #[test]
+    fn escape_html_special_chars() {
+        assert_eq!(escape_html("a < b & c > d"), "a &lt; b &amp; c &gt; d");
+        assert_eq!(escape_html("<script>alert('xss')</script>"), "&lt;script&gt;alert('xss')&lt;/script&gt;");
+        assert_eq!(escape_html("no special chars"), "no special chars");
+        assert_eq!(escape_html(""), "");
+    }
+
+    #[test]
+    fn html_special_chars_in_command_are_escaped() {
+        let req = make_request("Bash", serde_json::json!({"command": "echo '<hello>' && true"}));
+        let msg = format_permission_message(&req);
+        assert!(msg.contains("&lt;hello&gt;"));
+        assert!(msg.contains("&amp;&amp;"));
+        // Raw < and > should not appear in the command area
+        assert!(!msg.contains("<hello>"));
+    }
+
+    #[test]
+    fn html_special_chars_in_file_path_are_escaped() {
+        let req = make_request(
+            "Write",
+            serde_json::json!({"file_path": "/tmp/<test>.rs", "content": "x"}),
+        );
+        let msg = format_permission_message(&req);
+        assert!(msg.contains("&lt;test&gt;"));
+    }
+
+    #[test]
+    fn html_special_chars_in_assistant_context_are_escaped() {
+        let mut req = make_request("Bash", serde_json::json!({"command": "ls"}));
+        req.assistant_context = Some("Use <pre> tags & stuff".to_string());
+        let msg = format_permission_message(&req);
+        assert!(msg.contains("&lt;pre&gt; tags &amp; stuff"));
+    }
+
+    #[test]
+    fn project_name_bold_html() {
+        let req = make_request("Bash", serde_json::json!({"command": "ls"}));
+        let msg = format_permission_message(&req);
+        assert!(msg.contains("<b>\u{1f4cb} my-project</b>"));
     }
 }

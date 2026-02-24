@@ -65,6 +65,10 @@ Includes full spec, design artifacts, and implementation:
 
 - Improve type safety, correctness, and idiomatic Rust patterns (#4)
 
+### 📚 Documentation
+
+- *(readme)* Add CI, coverage, and license badges
+
 ### 🧪 Testing
 
 - Add more tests

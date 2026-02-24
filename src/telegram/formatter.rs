@@ -21,13 +21,13 @@ pub fn format_permission_message(request: &IpcRequest) -> String {
     let context_section = request
         .assistant_context
         .as_deref()
-        .map(|ctx| format!("\u{1f4ac} {}\n\n", escape_html(ctx)))
+        .map(|ctx| format!("\n\n\u{1f4ac} {}", escape_html(ctx)))
         .unwrap_or_default();
 
     let message = format!(
-        "{context}<b>\u{1f4cb} {project_name}</b>\n\n<b>\u{1f527} {tool}</b>\n{details}\n\n\u{1f4c1} {cwd}\n\u{1f194} Session: <code>{session}</code>",
-        context = context_section,
+        "<b>\u{1f4cb} {project_name}</b>{context}\n\n<b>\u{1f527} {tool}</b>\n{details}\n\n\u{1f4c1} {cwd}\n\u{1f194} Session: <code>{session}</code>",
         project_name = escape_html(project_name),
+        context = context_section,
         tool = escape_html(&request.tool_name),
         details = tool_details,
         cwd = escape_html(&request.cwd),
@@ -273,9 +273,10 @@ mod tests {
         req.assistant_context = Some("I will run the tests now.".to_string());
         let msg = format_permission_message(&req);
         assert!(msg.contains("\u{1f4ac} I will run the tests now."));
-        let context_pos = msg.find("\u{1f4ac}").unwrap();
+        // Project name should appear before context
         let project_pos = msg.find("\u{1f4cb}").unwrap();
-        assert!(context_pos < project_pos);
+        let context_pos = msg.find("\u{1f4ac}").unwrap();
+        assert!(project_pos < context_pos);
     }
 
     #[test]

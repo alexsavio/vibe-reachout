@@ -223,9 +223,9 @@ echo '{"session_id":"abc","tool_name":"Bash",...}' | RUST_LOG=debug vibe-reachou
 When Claude Code triggers a permission prompt, you receive a Telegram message like this:
 
 ```text
-💬 I'll run the test suite to verify everything passes.
-
 📋 my-project
+
+💬 I'll run the test suite to verify everything passes.
 
 🔧 Bash
   cargo test --all
@@ -234,7 +234,7 @@ When Claude Code triggers a permission prompt, you receive a Telegram message li
 🆔 Session: a1b2c3d4
 ```
 
-The first line shows Claude's last assistant message (truncated to ~500 chars), giving you context for **why** it wants to run the tool.
+The line after the project name shows Claude's last assistant message (truncated to ~500 chars), giving you context for **why** it wants to run the tool.
 
 With inline buttons:
 

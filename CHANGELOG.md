@@ -7,6 +7,11 @@ and this project adheres to [Calendar Versioning](https://calver.org/) (YYYY.MM.
 
 ## [Unreleased]
 
+### ⚙️ Miscellaneous Tasks
+
+- *(release)* Don't fail workflow if crate version already published
+## [2026.2.1] - 2026-02-24
+
 ### 🐛 Bug Fixes
 
 - *(config)* Use ~/.config/ path instead of platform-specific config dir (#2)

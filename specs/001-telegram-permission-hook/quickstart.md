@@ -49,11 +49,12 @@ Start Claude Code normally. When it needs permission, you'll get a Telegram mess
 
 ### 6. Verify the Reply path
 
-The Deny and Reply buttons send a reason back to Claude via `decision.message`. That field's delivery is not confirmed from the published hook docs (see `contracts/hook-io.md` → "Unverified against live docs"), so confirm it once on a live run:
+The Deny and Reply buttons send a reason back to Claude via `decision.message`. A live run (2026-05-30) confirmed Claude receives it verbatim; use these steps to re-verify after any change to `HookOutput`:
 
-1. Trigger a permission prompt (e.g. let Claude run a `Bash` command).
-2. On Telegram, tap **Reply** and send a distinctive instruction, e.g. `use yarn instead of npm`.
-3. In the Claude Code session, confirm Claude received that text (it should acknowledge the instruction, not just report a generic denial).
+1. Put the session in **default** permission mode — an auto-allow mode (`acceptEdits` / `bypassPermissions`) never fires a permission prompt, so the hook never engages and no Telegram message is sent.
+2. Trigger a permission prompt (e.g. let Claude run a `Bash` command that isn't allowlisted).
+3. On Telegram, tap **Reply** and send a distinctive instruction, e.g. `use yarn instead of npm`.
+4. In the Claude Code session, confirm Claude received that text — it surfaces as `The user wants you to modify your approach: <your text>`, not a generic denial.
 
 If Claude shows only a generic "denied" with no reason, `decision.message` is being dropped — re-check the field name against the live docs and update `HookOutput` in `src/models.rs`.
 

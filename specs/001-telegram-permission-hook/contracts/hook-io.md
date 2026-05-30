@@ -211,9 +211,9 @@ In `~/.claude/settings.json`:
 - `timeout: 600` — 10 minutes for user to respond on phone
 - No `async` — hook must block (Claude Code waits for the decision)
 
-### Unverified against live docs
+### `decision.message` delivery (verified by live test, not by docs)
 
-`decision.message` (on `behavior: "deny"`) is how the denial reason and the user's free-text Reply reach Claude. The published reference does not explicitly enumerate a `message`/`reason` field inside the PermissionRequest `decision` object, so its delivery to Claude is **not confirmed from docs alone**. Verify with a live run (see `quickstart.md` → "Verify the Reply path"). If a future docs revision renames it (e.g. to `reason`), update `HookOutput` in `src/models.rs`.
+`decision.message` (on `behavior: "deny"`) carries the denial reason and the user's free-text Reply back to Claude. The published reference does not enumerate a `message`/`reason` field inside the PermissionRequest `decision` object, but a live run (2026-05-30) confirmed Claude receives the string verbatim — a Telegram Reply surfaced in the session as the tool-denial message `The user wants you to modify your approach: <reply text>`. If a future docs revision names a different field (e.g. `reason`), re-test (`quickstart.md` → "Verify the Reply path") and update `HookOutput` in `src/models.rs`.
 
 ### Related events not yet used
 

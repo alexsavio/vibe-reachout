@@ -4,6 +4,22 @@ use std::path::Path;
 const MAX_FIELD_CHARS: usize = 500;
 const MAX_TOTAL_CHARS: usize = 4000;
 
+/// Top rule that gives each permission message a hard visual break from the
+/// previous one in the Telegram chat.
+const DIVIDER: &str = "━━━━━━━━━━━━━━━━";
+
+/// Stable per-session colour badges. Same `session_id` always maps to the same
+/// badge, so messages from one Claude Code session can be grouped at a glance
+/// when several sessions share the chat.
+const SESSION_BADGES: [&str; 8] = ["🔴", "🟠", "🟡", "🟢", "🔵", "🟣", "🟤", "⚪"];
+
+/// Picks a deterministic badge for a session. Byte-sum (not a hashmap hasher)
+/// keeps the mapping stable across builds and machines.
+fn session_badge(session_id: &str) -> &'static str {
+    let sum: usize = session_id.bytes().map(usize::from).sum();
+    SESSION_BADGES[sum % SESSION_BADGES.len()]
+}
+
 pub fn format_permission_message(request: &IpcRequest) -> String {
     let project_name = Path::new(&request.cwd)
         .file_name()
@@ -25,7 +41,9 @@ pub fn format_permission_message(request: &IpcRequest) -> String {
         .unwrap_or_default();
 
     let message = format!(
-        "<b>\u{1f4cb} {project_name}</b>{context}\n\n<b>\u{1f527} {tool}</b>\n{details}\n\n\u{1f4c1} {cwd}\n\u{1f194} Session: <code>{session}</code>",
+        "{divider}\n{badge} <b>{project_name}</b> \u{00b7} <code>{session}</code>{context}\n\n<b>\u{1f527} {tool}</b>\n{details}\n\n\u{1f4c1} {cwd}",
+        divider = DIVIDER,
+        badge = session_badge(&request.session_id),
         project_name = escape_html(project_name),
         context = context_section,
         tool = escape_html(&request.tool_name),
@@ -274,7 +292,7 @@ mod tests {
         let msg = format_permission_message(&req);
         assert!(msg.contains("\u{1f4ac} I will run the tests now."));
         // Project name should appear before context
-        let project_pos = msg.find("\u{1f4cb}").unwrap();
+        let project_pos = msg.find("my-project").unwrap();
         let context_pos = msg.find("\u{1f4ac}").unwrap();
         assert!(project_pos < context_pos);
     }
@@ -332,6 +350,33 @@ mod tests {
     fn project_name_bold_html() {
         let req = make_request("Bash", serde_json::json!({"command": "ls"}));
         let msg = format_permission_message(&req);
-        assert!(msg.contains("<b>\u{1f4cb} my-project</b>"));
+        assert!(msg.contains("<b>my-project</b>"));
+    }
+
+    #[test]
+    fn message_starts_with_divider() {
+        let req = make_request("Bash", serde_json::json!({"command": "ls"}));
+        let msg = format_permission_message(&req);
+        assert!(msg.starts_with(DIVIDER));
+    }
+
+    #[test]
+    fn header_contains_stable_session_badge() {
+        let req = make_request("Bash", serde_json::json!({"command": "ls"}));
+        let msg = format_permission_message(&req);
+        let badge = session_badge(&req.session_id);
+        assert!(SESSION_BADGES.contains(&badge));
+        assert!(msg.contains(badge));
+    }
+
+    #[test]
+    fn session_badge_is_deterministic() {
+        assert_eq!(session_badge("abcdef1234567890"), session_badge("abcdef1234567890"));
+    }
+
+    #[test]
+    fn session_badge_differs_across_sessions() {
+        // Last byte differs by 1 ('a' vs 'b') → byte-sum differs by 1 → different slot.
+        assert_ne!(session_badge("session-aaaa"), session_badge("session-aaab"));
     }
 }

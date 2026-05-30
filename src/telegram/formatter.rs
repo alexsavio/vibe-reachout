@@ -371,7 +371,10 @@ mod tests {
 
     #[test]
     fn session_badge_is_deterministic() {
-        assert_eq!(session_badge("abcdef1234567890"), session_badge("abcdef1234567890"));
+        assert_eq!(
+            session_badge("abcdef1234567890"),
+            session_badge("abcdef1234567890")
+        );
     }
 
     #[test]

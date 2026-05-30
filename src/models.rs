@@ -270,6 +270,49 @@ mod tests {
         );
     }
 
+    /// Golden wire-format documents. The full serialized JSON must match the
+    /// `PermissionRequest` hook contract byte-for-byte (`contracts/hook-io.md`).
+    /// A serde rename or restructure breaks these in one place, before it
+    /// silently changes what Claude Code receives on stdout.
+    #[test]
+    fn hook_output_golden_documents() {
+        assert_eq!(
+            serde_json::to_value(HookOutput::allow()).unwrap(),
+            serde_json::json!({
+                "hookSpecificOutput": {
+                    "hookEventName": "PermissionRequest",
+                    "decision": { "behavior": "allow" }
+                }
+            })
+        );
+
+        assert_eq!(
+            serde_json::to_value(HookOutput::deny("nope".to_string())).unwrap(),
+            serde_json::json!({
+                "hookSpecificOutput": {
+                    "hookEventName": "PermissionRequest",
+                    "decision": { "behavior": "deny", "message": "nope" }
+                }
+            })
+        );
+
+        assert_eq!(
+            serde_json::to_value(HookOutput::allow_always(vec![
+                serde_json::json!({"type": "toolAlwaysAllow", "tool": "Bash"})
+            ]))
+            .unwrap(),
+            serde_json::json!({
+                "hookSpecificOutput": {
+                    "hookEventName": "PermissionRequest",
+                    "decision": {
+                        "behavior": "allow",
+                        "updatedPermissions": [{"type": "toolAlwaysAllow", "tool": "Bash"}]
+                    }
+                }
+            })
+        );
+    }
+
     #[test]
     fn decision_serde_roundtrip() {
         for decision in [

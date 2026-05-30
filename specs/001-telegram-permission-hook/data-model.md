@@ -28,7 +28,7 @@ JSON received on stdin from Claude Code when PermissionRequest fires.
 | `session_id` | String | yes | Claude Code session identifier |
 | `transcript_path` | String | yes | Path to conversation JSONL file |
 | `cwd` | String | yes | Current working directory |
-| `permission_mode` | String | yes | "default", "plan", "acceptEdits", "dontAsk", "bypassPermissions" |
+| `permission_mode` | String | yes | "default", "plan", "acceptEdits", "auto", "dontAsk", "bypassPermissions" (stored as opaque String; new modes do not break parsing) |
 | `hook_event_name` | String | yes | Always "PermissionRequest" |
 | `tool_name` | String | yes | Tool being called (Bash, Write, Edit, etc.) |
 | `tool_input` | Object | yes | Tool-specific parameters (varies by tool) |

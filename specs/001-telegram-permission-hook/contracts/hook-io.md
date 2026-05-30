@@ -2,6 +2,8 @@
 
 Source: [Claude Code Hooks Reference](https://code.claude.com/docs/en/hooks)
 
+_Retrieved: 2026-05-30._ Re-verify against the live docs if the hook stops firing or decisions stop applying; the protocol is an external moving spec (the docs host already moved `docs.claude.com` → `code.claude.com`, and new events/modes are added over time).
+
 ## Hook Event: `PermissionRequest`
 
 Fires when Claude Code is about to show a permission dialog to the user.
@@ -13,7 +15,7 @@ Fires when Claude Code is about to show a permission dialog to the user.
   "session_id": "string",
   "transcript_path": "string (absolute path)",
   "cwd": "string (absolute path)",
-  "permission_mode": "default" | "plan" | "acceptEdits" | "dontAsk" | "bypassPermissions",
+  "permission_mode": "default" | "plan" | "acceptEdits" | "auto" | "dontAsk" | "bypassPermissions",
   "hook_event_name": "PermissionRequest",
   "tool_name": "string",
   "tool_input": { ... },
@@ -208,3 +210,11 @@ In `~/.claude/settings.json`:
 - No `matcher` field — matches all permission requests
 - `timeout: 600` — 10 minutes for user to respond on phone
 - No `async` — hook must block (Claude Code waits for the decision)
+
+### `decision.message` delivery (verified by live test, not by docs)
+
+`decision.message` (on `behavior: "deny"`) carries the denial reason and the user's free-text Reply back to Claude. The published reference does not enumerate a `message`/`reason` field inside the PermissionRequest `decision` object, but a live run (2026-05-30) confirmed Claude receives the string verbatim — a Telegram Reply surfaced in the session as the tool-denial message `The user wants you to modify your approach: <reply text>`. If a future docs revision names a different field (e.g. `reason`), re-test (`quickstart.md` → "Verify the Reply path") and update `HookOutput` in `src/models.rs`.
+
+### Related events not yet used
+
+`PermissionDenied` (`hookSpecificOutput.retry: true`) fires when an auto-mode denial occurs and lets a hook request a retry. Candidate future enhancement: route auto-mode denials to the phone for a retry decision. Out of scope for the current hook.

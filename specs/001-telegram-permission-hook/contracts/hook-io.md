@@ -2,6 +2,8 @@
 
 Source: [Claude Code Hooks Reference](https://code.claude.com/docs/en/hooks)
 
+_Retrieved: 2026-05-30._ Re-verify against the live docs if the hook stops firing or decisions stop applying; the protocol is an external moving spec (the docs host already moved `docs.claude.com` → `code.claude.com`, and new events/modes are added over time).
+
 ## Hook Event: `PermissionRequest`
 
 Fires when Claude Code is about to show a permission dialog to the user.
@@ -13,7 +15,7 @@ Fires when Claude Code is about to show a permission dialog to the user.
   "session_id": "string",
   "transcript_path": "string (absolute path)",
   "cwd": "string (absolute path)",
-  "permission_mode": "default" | "plan" | "acceptEdits" | "dontAsk" | "bypassPermissions",
+  "permission_mode": "default" | "plan" | "acceptEdits" | "auto" | "dontAsk" | "bypassPermissions",
   "hook_event_name": "PermissionRequest",
   "tool_name": "string",
   "tool_input": { ... },
@@ -208,3 +210,11 @@ In `~/.claude/settings.json`:
 - No `matcher` field — matches all permission requests
 - `timeout: 600` — 10 minutes for user to respond on phone
 - No `async` — hook must block (Claude Code waits for the decision)
+
+### Unverified against live docs
+
+`decision.message` (on `behavior: "deny"`) is how the denial reason and the user's free-text Reply reach Claude. The published reference does not explicitly enumerate a `message`/`reason` field inside the PermissionRequest `decision` object, so its delivery to Claude is **not confirmed from docs alone**. Verify with a live run (see `quickstart.md` → "Verify the Reply path"). If a future docs revision renames it (e.g. to `reason`), update `HookOutput` in `src/models.rs`.
+
+### Related events not yet used
+
+`PermissionDenied` (`hookSpecificOutput.retry: true`) fires when an auto-mode denial occurs and lets a hook request a retry. Candidate future enhancement: route auto-mode denials to the phone for a retry decision. Out of scope for the current hook.

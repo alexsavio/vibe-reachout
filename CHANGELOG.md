@@ -14,6 +14,7 @@ and this project adheres to [Calendar Versioning](https://calver.org/) (YYYY.MM.
 ### ⚙️ Miscellaneous Tasks
 
 - Update deps and reconcile hook contract with live Claude Code docs (#5)
+- Release v2026.5.0
 ## [2026.2.2] - 2026-02-24
 
 ### 🚀 Features

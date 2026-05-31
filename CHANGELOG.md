@@ -7,6 +7,10 @@ and this project adheres to [Calendar Versioning](https://calver.org/) (YYYY.MM.
 
 ## [Unreleased]
 
+### 🚀 Features
+
+- *(telegram)* Per-session colour badge and message divider (#6)
+
 ### ⚙️ Miscellaneous Tasks
 
 - Update deps and reconcile hook contract with live Claude Code docs (#5)
